@@ -1,4 +1,4 @@
 {
-    "LaravelExtraIntellisense.phpCommand": "docker exec -i -w /var/www/html/lab-booking rcmp_web_server php -r \"{code}\"",
-    "LaravelExtraIntellisense.basePathForCode": "/var/www/html/lab-booking"
+    "LaravelExtraIntellisense.phpCommand": "docker exec -i -w /var/www/html/uniklab-rcmp rcmp_web_server php -r \"{code}\"",
+    "LaravelExtraIntellisense.basePathForCode": "/var/www/html/uniklab-rcmp"
 }
