@@ -25,8 +25,10 @@ Route::get('/bookings/{booking:ref}', [BookingController::class, 'show'])->name(
 Route::get('/check-booking', [BookingController::class, 'lookup'])->name('bookings.lookup');
 
 Route::get('/admin/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/admin/login', [AuthController::class, 'login'])->name('login.attempt');
-Route::post('/admin/login/quick', [AuthController::class, 'quickLogin'])->name('login.quick');
+// Throttled: the password form is reachable from the open internet, so cap
+// guessing at 10 attempts per minute per IP.
+Route::post('/admin/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login.attempt');
+
 Route::post('/admin/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
@@ -39,6 +41,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/bookings/csl', [AdminBookingController::class, 'csl'])->name('bookings.csl');
     Route::get('/bookings/pharma', [AdminBookingController::class, 'pharma'])->name('bookings.pharma');
     Route::patch('/bookings/{booking:ref}', [AdminBookingController::class, 'update'])->name('bookings.update');
+    Route::get('/bookings/{booking:ref}/details', [AdminBookingController::class, 'details'])->name('bookings.details');
     Route::get('/bookings/{booking:ref}/room-availability', [AdminBookingController::class, 'roomAvailability'])->name('bookings.room-availability');
     Route::patch('/bookings/{booking:ref}/reassign', [AdminBookingController::class, 'reassignRoom'])->name('bookings.reassign');
     Route::patch('/bookings/{booking:ref}/cancel', [AdminBookingController::class, 'cancel'])->name('bookings.cancel');
@@ -49,6 +52,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::delete('/labs/{lab}', [AdminLabController::class, 'destroy'])->name('labs.destroy');
 
     Route::get('/schedule-block', [AdminTimeBlockController::class, 'index'])->name('time-blocks.index');
+    Route::get('/schedule-block/{timeBlock}/details', [AdminTimeBlockController::class, 'details'])->name('time-blocks.details');
     Route::post('/schedule-block', [AdminTimeBlockController::class, 'store'])->name('time-blocks.store');
     Route::delete('/schedule-block/{timeBlock}', [AdminTimeBlockController::class, 'destroy'])->name('time-blocks.destroy');
 

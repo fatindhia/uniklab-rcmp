@@ -11,6 +11,257 @@
         function admPad2(n) { return String(n).padStart(2, '0'); }
         function admDateKey(y, m, d) { return `${y}-${admPad2(m + 1)}-${admPad2(d)}`; }
         function admEsc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+        // admEsc leaves quotes alone, which is fine for text nodes but breaks a
+        // double-quoted attribute — JSON payloads are full of them.
+        function admEscAttr(s) { return admEsc(s).replace(/"/g, '&quot;'); }
+
+        /**
+         * Hover card for calendar bookings.
+         *
+         * The card lives on <body> rather than inside the row, because the
+         * detail panel is its own scroll container and would otherwise clip it.
+         * Bound per render since showDetail() replaces the list wholesale.
+         *
+         * Pointer-only: on touch there is no hover, and the row already shows
+         * room, time, subject and status, so the card is suppressed there
+         * (see the max-width rule on .pc-hovercard).
+         */
+        const admHoverCapable = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+        let admHovercardEl = null;
+        // Bumped on every hover so a slow response for a row the pointer has
+        // already left can be discarded instead of overwriting the current card.
+        let admHoverToken = 0;
+        const admDetailsCache = {};
+
+        /**
+         * Full booking record for the hover card. Cached per ref for the life of
+         * the page: the same booking is hovered repeatedly while scanning a day,
+         * and the record can't change without a page action anyway. Resolves
+         * null on any failure — the card keeps showing the calendar-only fields
+         * rather than erroring in the admin's face over a tooltip.
+         */
+        function admFetchBookingDetails(ref) {
+            if (!ref || !window.ADMIN_BOOKING_DETAILS_URL) return Promise.resolve(null);
+            if (admDetailsCache[ref] !== undefined) return Promise.resolve(admDetailsCache[ref]);
+
+            return fetch(window.ADMIN_BOOKING_DETAILS_URL.replace('__REF__', encodeURIComponent(ref)), {
+                headers: { Accept: 'application/json' },
+            })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .catch(function () { return null; })
+                .then(function (data) { admDetailsCache[ref] = data; return data; });
+        }
+
+        /** Same contract as admFetchBookingDetails(), for a time block. */
+        function admFetchBlockDetails(id) {
+            if (!id || !window.ADMIN_BLOCK_DETAILS_URL) return Promise.resolve(null);
+            const cacheKey = 'block:' + id;
+            if (admDetailsCache[cacheKey] !== undefined) return Promise.resolve(admDetailsCache[cacheKey]);
+
+            return fetch(window.ADMIN_BLOCK_DETAILS_URL.replace('__ID__', encodeURIComponent(id)), {
+                headers: { Accept: 'application/json' },
+            })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .catch(function () { return null; })
+                .then(function (data) { admDetailsCache[cacheKey] = data; return data; });
+        }
+
+        const ADM_RECUR_LABELS = { none: 'One-off', weekly: 'Weekly', fortnightly: 'Fortnightly' };
+
+        function admBlockHovercardHtml(basic, full) {
+            const kv = (k, v) => v ? `<div class="pc-hovercard-row"><span class="k">${admEsc(k)}</span><span class="v">${admEsc(v)}</span></div>` : '';
+            const type = basic.type ? basic.type.charAt(0).toUpperCase() + basic.type.slice(1) : '';
+
+            // rooms/equipment arrive as arrays from the endpoint but as a
+            // pre-joined string in the calendar payload.
+            const asList = (v) => Array.isArray(v) ? v : (v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : []);
+
+            let html = `<div class="pc-hovercard-head">`
+                + `<span class="pc-hovercard-ref">${admEsc((full && full.title) || basic.title || 'Blocked')}</span>`
+                + `<span class="pc-status pc-status--cancelled" style="font-size:.76rem;">🚫 Blocked</span>`
+                + `</div>`;
+
+            html += kv('Lab type', type);
+            html += kv('Date', full && full.date);
+            html += kv('Time', `${basic.start}–${basic.end}`);
+            html += kv('PIC', (full && full.pic) || basic.pic);
+            if (full) {
+                html += kv('Repeats', ADM_RECUR_LABELS[full.recurring] || full.recurring);
+                html += kv('Blocked by', full.created_by);
+            }
+
+            const rooms = asList(full ? full.rooms : basic.rooms);
+            if (rooms.length) {
+                html += `<div class="pc-hovercard-sec">Rooms</div>`;
+                rooms.forEach(function (r) { html += `<div class="pc-hovercard-room">${admEsc(r)}</div>`; });
+            }
+
+            const equipment = asList(full && full.equipment);
+            if (equipment.length) {
+                html += `<div class="pc-hovercard-sec">Equipment</div>`;
+                equipment.forEach(function (e) { html += `<div class="pc-hovercard-eq">• ${admEsc(e)}</div>`; });
+            }
+
+            const purpose = (full && full.purpose) || basic.purpose;
+            if (purpose) {
+                html += `<div class="pc-hovercard-sec">Purpose</div><div class="pc-hovercard-text">${admEsc(purpose)}</div>`;
+            }
+            if (full && full.notes) {
+                html += `<div class="pc-hovercard-sec">Notes</div><div class="pc-hovercard-text">${admEsc(full.notes)}</div>`;
+            }
+
+            return html;
+        }
+
+        function admHovercardHtml(basic, full) {
+            const kv = (k, v) => v ? `<div class="pc-hovercard-row"><span class="k">${admEsc(k)}</span><span class="v">${admEsc(v)}</span></div>` : '';
+            const type = basic.type ? basic.type.charAt(0).toUpperCase() + basic.type.slice(1) : '';
+
+            let html = `<div class="pc-hovercard-head">`
+                + `<span class="pc-hovercard-ref">${admEsc((full && full.ref) || basic.ref || 'Booking')}</span>`
+                + `<span class="pc-status pc-status--${admEsc(basic.status)}" style="font-size:.76rem;">${admEsc(basic.status)}</span>`
+                + `</div>`;
+
+            html += kv('Applicant', (full && full.applicant_name) || basic.name);
+
+            if (full) {
+                html += kv('Role', full.applicant_role);
+                html += kv('ID', full.applicant_id);
+                html += kv('Email', full.applicant_email);
+                html += kv('Phone', full.applicant_phone);
+                html += kv('Dept', full.applicant_department);
+            }
+
+            html += kv('Lab type', type);
+            html += kv('Date', (full && full.date) || '');
+            html += kv('Time', `${basic.start}–${basic.end}`);
+
+            if (full && full.roomsDetail && full.roomsDetail.length) {
+                html += `<div class="pc-hovercard-sec">Rooms &amp; equipment</div>`;
+                full.roomsDetail.forEach(function (r) {
+                    html += `<div class="pc-hovercard-room">${admEsc(r.name)}`
+                        + (r.primary ? `<span class="pc-hovercard-tag">Primary</span>` : '')
+                        + `</div>`;
+                    if (r.equipment && r.equipment.length) {
+                        r.equipment.forEach(function (e) {
+                            html += `<div class="pc-hovercard-eq">• ${admEsc(e)}</div>`;
+                        });
+                    } else {
+                        html += `<div class="pc-hovercard-eq is-none">No equipment</div>`;
+                    }
+                });
+            } else {
+                html += kv('Room(s)', basic.rooms);
+            }
+
+            if (full) {
+                if (full.students && full.students.length) {
+                    html += `<div class="pc-hovercard-sec">Students (${full.students.length})</div>`;
+                    full.students.slice(0, 4).forEach(function (s) {
+                        html += `<div class="pc-hovercard-eq">• ${admEsc(s.name)}${s.id ? ' (' + admEsc(s.id) + ')' : ''}</div>`;
+                    });
+                    if (full.students.length > 4) {
+                        html += `<div class="pc-hovercard-eq is-none">+${full.students.length - 4} more</div>`;
+                    }
+                }
+                if (full.csl_discipline) html += kv('Discipline', full.csl_discipline);
+            }
+
+            const purpose = (full && full.purpose) || basic.subject;
+            if (purpose) {
+                html += `<div class="pc-hovercard-sec">Purpose</div><div class="pc-hovercard-text">${admEsc(purpose)}</div>`;
+            }
+            if (full && full.applicant_remark) {
+                html += `<div class="pc-hovercard-sec">Applicant remark</div><div class="pc-hovercard-text">${admEsc(full.applicant_remark)}</div>`;
+            }
+            if (full && full.admin_remark) {
+                html += `<div class="pc-hovercard-sec">Admin remark</div><div class="pc-hovercard-text">${admEsc(full.admin_remark)}</div>`;
+            }
+
+            return html;
+        }
+
+        function admHovercard() {
+            if (!admHovercardEl) {
+                admHovercardEl = document.createElement('div');
+                admHovercardEl.className = 'pc-hovercard';
+                document.body.appendChild(admHovercardEl);
+            }
+            return admHovercardEl;
+        }
+
+        function admHideHovercard() {
+            if (admHovercardEl) admHovercardEl.classList.remove('is-open');
+        }
+
+        function admBindCalendarHovercards(container) {
+            if (!admHoverCapable || !container) return;
+
+            // Bookings and blocks behave identically here — only the payload
+            // attribute, the fetcher and the renderer differ.
+            const kinds = [
+                { attr: 'booking', key: 'ref', fetch: admFetchBookingDetails, render: admHovercardHtml },
+                { attr: 'block', key: 'id', fetch: admFetchBlockDetails, render: admBlockHovercardHtml },
+            ];
+
+            kinds.forEach(function (kind) {
+                container.querySelectorAll('.pc-item[data-' + kind.attr + ']').forEach(function (row) {
+                    let data;
+                    try { data = JSON.parse(row.dataset[kind.attr]); } catch (e) { return; }
+
+                    row.addEventListener('mouseenter', function () {
+                        const card = admHovercard();
+                        admHoverToken++;
+                        const token = admHoverToken;
+
+                        // Paint what the calendar already knows straight away,
+                        // so the card never appears empty while the request is
+                        // in flight, then fill in the rest when it lands.
+                        card.innerHTML = kind.render(data, null);
+                        card.classList.add('is-open');
+                        admPositionHovercard(card, row);
+
+                        kind.fetch(data[kind.key]).then(function (full) {
+                            // A different row may have been hovered in the
+                            // meantime — only the newest hover may repaint.
+                            if (!full || token !== admHoverToken) return;
+                            if (!admHovercardEl || !admHovercardEl.classList.contains('is-open')) return;
+                            admHovercardEl.innerHTML = kind.render(data, full);
+                            admPositionHovercard(admHovercardEl, row);
+                        });
+                    });
+
+                    row.addEventListener('mousemove', function () {
+                        if (admHovercardEl && admHovercardEl.classList.contains('is-open')) {
+                            admPositionHovercard(admHovercardEl, row);
+                        }
+                    });
+
+                    row.addEventListener('mouseleave', admHideHovercard);
+                });
+            });
+        }
+
+        // Anchored to the row, flipped to whichever side has room so the card
+        // never runs off screen.
+        function admPositionHovercard(card, row) {
+            const r = row.getBoundingClientRect();
+            const w = card.offsetWidth || 280;
+            const h = card.offsetHeight || 160;
+            const gap = 10;
+
+            let left = r.left - w - gap;
+            if (left < 8) left = r.right + gap;
+            if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+
+            let top = r.top + (r.height / 2) - (h / 2);
+            top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+
+            card.style.left = left + 'px';
+            card.style.top = top + 'px';
+        }
+
+        window.addEventListener('scroll', admHideHovercard, true);
 
         function initAdminCalendar(prefix, events, opts = {}) {
             const now = new Date();
@@ -249,16 +500,34 @@
 
                 const { bookings, blocks } = eventsFor(ds);
                 let html = '';
+
+                // Room, time, subject and status each get their own line, the
+                // same shape the public homepage calendar uses.
+                const line = (text, cls) => text ? `<span class="${cls}">${admEsc(text)}</span>` : '';
+
                 blocks.forEach(b => {
-                    html += `<div class="pc-item"><span class="pc-dot pc-dot--block"></span><div><strong>${admEsc(b.rooms || b.title || 'Blocked')}</strong><div class="muted" style="font-size:.8rem; margin-top:2px;">${admEsc(b.start)}–${admEsc(b.end)}${b.title ? ' · 🚫 ' + admEsc(b.title) : ' · Blocked'}</div></div></div>`;
+                    html += `<div class="pc-item" data-block="${admEscAttr(JSON.stringify(b))}"><span class="pc-dot pc-dot--block"></span><div class="pc-item-lines">`
+                        + line(b.rooms || b.title || 'Blocked', 'pc-item-room')
+                        + line(`${b.start}–${b.end}`, 'pc-item-meta')
+                        + line(b.title, 'pc-item-meta')
+                        + `<span class="pc-status pc-status--cancelled">🚫 Blocked</span>`
+                        + `</div></div>`;
                 });
                 bookings.forEach(b => {
-                    html += `<div class="pc-item"><span class="pc-dot pc-dot--${b.status === 'pending' ? 'pending' : admEsc(b.type)}"></span><div><strong>${admEsc(b.rooms || b.type)}</strong> <span class="pc-status pc-status--${b.status}" style="font-size:.78rem;">${admEsc(b.status)}</span><div class="muted" style="font-size:.8rem; margin-top:2px;">${admEsc(b.start)}–${admEsc(b.end)}${b.subject ? ' · ' + admEsc(b.subject) : ''}</div></div></div>`;
+                    // The whole event rides along on the element so the hover
+                    // card can read it without another lookup.
+                    html += `<div class="pc-item" data-booking="${admEscAttr(JSON.stringify(b))}"><span class="pc-dot pc-dot--${b.status === 'pending' ? 'pending' : admEsc(b.type)}"></span><div class="pc-item-lines">`
+                        + line(b.rooms || b.type, 'pc-item-room')
+                        + line(`${b.start}–${b.end}`, 'pc-item-meta')
+                        + line(b.subject, 'pc-item-meta')
+                        + `<span class="pc-status pc-status--${admEsc(b.status)}">${admEsc(b.status)}</span>`
+                        + `</div></div>`;
                 });
                 if (!blocks.length && !bookings.length) {
                     html = '<div class="pc-empty">No bookings on this date.</div>';
                 }
                 body.innerHTML = html;
+                admBindCalendarHovercards(body);
             }
 
             $('prev')?.addEventListener('click', () => { state.month--; if (state.month < 0) { state.month = 11; state.year--; } render(); });

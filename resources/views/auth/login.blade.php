@@ -58,11 +58,10 @@
 
         .login-top { position: relative; z-index: 1; text-align: center; margin-bottom: 30px; max-width: 420px; }
         .login-mark {
-            width: 62px; height: 62px; margin: 0 auto 18px; border-radius: var(--radius);
-            background: #fff; display: flex; align-items: center; justify-content: center; padding: 9px;
-            box-shadow: 0 20px 40px -16px rgba(125, 145, 148, 0.6);
+            width: 208px; margin: 0 auto 18px;
+            display: flex; align-items: center; justify-content: center;
         }
-        .login-mark img { width: 100%; height: 100%; object-fit: contain; }
+        .login-mark img { width: 100%; height: auto; display: block; }
         .login-top h1 { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 800; color: #fff; letter-spacing: -0.02em; margin-bottom: 8px; }
         .login-top p { font-size: 0.92rem; color: rgba(255, 255, 255, 0.5); line-height: 1.5; }
 
@@ -98,6 +97,28 @@
             padding: 11px 14px; border-radius: var(--radius-sm); font-size: 0.83rem; margin-bottom: 18px;
         }
 
+        .field { margin-bottom: 14px; }
+        .field label {
+            display: block; margin-bottom: 6px;
+            font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-mid);
+        }
+        .field input {
+            width: 100%; min-height: 46px; padding: 0 13px;
+            border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+            font-family: var(--font-sans); font-size: 0.9rem; color: var(--text); background: var(--white);
+        }
+        .field input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(125, 145, 148, 0.18); }
+
+        .remember-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 16px; font-size: 0.82rem; color: var(--text-mid); }
+        .remember-row input { width: 16px; height: 16px; accent-color: var(--gold); }
+
+        .btn-primary {
+            width: 100%; min-height: 48px; padding: 10px 16px; border: 0; border-radius: var(--radius-sm);
+            background: var(--grad); color: #fff; font-family: var(--font-sans);
+            font-size: 0.9rem; font-weight: 700; letter-spacing: 0.01em; cursor: pointer;
+        }
+        .btn-primary:hover { filter: brightness(1.06); }
+
         .sso-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--text-light); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
         .sso-divider::before, .sso-divider::after { content: ''; height: 1px; background: var(--border); flex: 1; }
 
@@ -124,14 +145,20 @@
         @media (max-width: 480px) {
             .login-card { padding: 24px 20px 22px; }
         }
+        @media (max-width: 880px) {
+            /* This page carries its own stylesheet, so it needs its own copy of
+               the 16px rule — below that, iOS Safari zooms in on focus and the
+               staff member has to pinch back out to reach the login button. */
+            input, select, textarea { font-size: 16px; }
+        }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
 <body>
     <div class="login-top">
-        <div class="login-mark"><img src="{{ asset('images/logo-square.png') }}" alt="{{ config('app.name', 'Lab Booking') }}"></div>
-        <h1>{{ config('app.name', 'Lab Booking') }} Admin</h1>
-        <p>Lab booking system — lab staff &amp; super admin portal.</p>
+        <div class="login-mark"><img src="{{ asset('images/logo.png') }}" alt="{{ config('app.name', 'Lab Booking') }}"></div>
+        <h1>ADMINISTRATORS</h1>
+        <p>Lab booking system — administrators portal.</p>
     </div>
 
     <div class="login-card">
@@ -145,7 +172,7 @@
 
         <div class="restricted-notice">
             <span style="font-size:1rem; flex-shrink:0;">⚠️</span>
-            <span>This portal is for <strong>lab staff and super admins only</strong>.</span>
+            <span>This portal is for <strong>administrators only!</strong>.</span>
         </div>
 
         @if (session('status'))
@@ -160,35 +187,37 @@
             </div>
         @endif
 
+        <form method="POST" action="{{ route('login.attempt') }}">
+            @csrf
+            <div class="field">
+                <label for="staff_id">Staff ID</label>
+                {{-- Font size lives in .field input, not inline: an inline rule would
+                     outrank the mobile 16px rule and keep iOS zooming on focus. --}}
+                <input type="text" id="staff_id" name="staff_id" value="{{ old('staff_id') }}"
+                       autocomplete="username" inputmode="numeric" required autofocus placeholder="e.g. 123456">
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password"
+                       autocomplete="current-password" required placeholder="Your password">
+            </div>
+            <label class="remember-row">
+                <input type="checkbox" name="remember" value="1" @checked(old('remember'))>
+                <span>Keep me signed in on this device</span>
+            </label>
+            <button type="submit" class="btn-primary">Sign In</button>
+        </form>
+
+        <div class="sso-divider">or</div>
+
         <button type="button" class="btn-sso" disabled aria-disabled="true" title="Microsoft SSO is not enabled yet">
             <span class="sso-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
             Login with Microsoft SSO — Coming Soon
         </button>
 
-        <div class="sso-divider">or</div>
-
-        <div style="background: var(--off-white); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 4px;">
-            <p style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-mid); margin-bottom: 8px;">
-                ⚡ Quick login <span style="font-weight:500; text-transform:none; letter-spacing:0;">(temporary, pre-SSO — no password)</span>
-            </p>
-            <form method="POST" action="{{ route('login.quick') }}">
-                @csrf
-                <select name="staff_id" required
-                    style="width:100%; min-height:44px; padding:0 12px; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-family:var(--font-sans); font-size:0.88rem; color:var(--text); background:var(--white); margin-bottom:10px;">
-                    <option value="" disabled selected>Select a staff account…</option>
-                    @foreach ($quickLoginUsers as $u)
-                        <option value="{{ $u->staff_id }}">{{ $u->staff_id }} — {{ $u->full_name }} ({{ $u->role?->label }})</option>
-                    @endforeach
-                </select>
-                <button type="submit" class="btn-sso" style="cursor:pointer; opacity:1;">
-                    <span class="sso-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-                    Continue as selected user
-                </button>
-            </form>
-        </div>
     </div>
 
-    <a href="{{ route('home') }}" class="back-link">← Back to Public Booking Site</a>
-    <p class="login-note">Access is logged. Unauthorised attempts are monitored.<br>&copy; {{ date('Y') }} Universiti Kuala Lumpur RCMP</p>
+    <a href="{{ route('home') }}" class="back-link">← Back to Homepage</a>
+    <p class="login-note">Access is logged. Unauthorised attempts are monitored.<br>&copy; {{ date('Y') }} UniKL RCMP</p>
 </body>
 </html>

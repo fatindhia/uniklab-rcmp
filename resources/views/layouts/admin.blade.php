@@ -29,8 +29,15 @@
         window.ADMIN_LABS_BY_TYPE = @json($__adminLabsByType);
         window.ADMIN_RECENT_PENDING = @json($adminRecentPending->map(fn ($b) => ['ref' => $b->ref, 'submitted_at' => $b->submitted_at]));
         window.ADMIN_TIME_BLOCKS_URL = @json(route('admin.time-blocks.index'));
+        window.ADMIN_BOOKING_DETAILS_URL = @json(route('admin.bookings.details', ['booking' => '__REF__']));
+        window.ADMIN_BLOCK_DETAILS_URL = @json(route('admin.time-blocks.details', ['timeBlock' => '__ID__']));
     </script>
     <script src="{{ asset('js/admin.js') }}?v={{ filemtime(public_path('js/admin.js')) }}"></script>
+    <script src="{{ asset('js/sweetalert2.min.js') }}?v={{ filemtime(public_path('js/sweetalert2.min.js')) }}"></script>
+    <script src="{{ asset('js/notify.js') }}?v={{ filemtime(public_path('js/notify.js')) }}"></script>
+    @if (session('status'))
+        <script>document.addEventListener('DOMContentLoaded', function () { notifySuccess(@json(session('status'))); });</script>
+    @endif
     <div class="shell" id="admShell">
         <div class="sidebar-backdrop" id="admSidebarBackdrop"></div>
         <aside class="sidebar" id="admSidebar">
@@ -221,10 +228,10 @@
             </header>
 
             <div class="main-content">
-                @if (session('status'))
-                    <div class="card" style="padding:14px 16px; margin-bottom:18px; color:#1e6b3b;">{{ session('status') }}</div>
-                @endif
-
+                {{-- Flash messages surface as toasts (see public/js/notify.js).
+                     Validation errors stay on screen as a block as well, since
+                     they usually list several things to fix and a toast that
+                     disappears would take the detail with it. --}}
                 @if ($errors->any())
                     <div class="card" style="padding:14px 16px; margin-bottom:18px; color:#a03027;">
                         <ul style="margin:0; padding-left:20px;">

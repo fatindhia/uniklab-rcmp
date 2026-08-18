@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -15,9 +14,7 @@ class AuthController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        $quickLoginUsers = User::with('role')->where('is_active', true)->orderBy('full_name')->get();
-
-        return view('auth.login', compact('quickLoginUsers'));
+        return view('auth.login');
     }
 
     public function login(Request $request)
@@ -27,6 +24,11 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        // is_active is part of the lookup, not a check after the fact: a
+        // deactivated account should fail exactly like a wrong password, with
+        // no hint that the ID itself is real.
+        $credentials['is_active'] = true;
+
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
             return back()
                 ->withErrors(['staff_id' => 'Those credentials do not match our records.'])
@@ -35,26 +37,6 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
         Auth::user()->forceFill(['last_login_at' => now()])->save();
-
-        return redirect()->intended(route('admin.dashboard'));
-    }
-
-    // TODO: remove once real Microsoft SSO is live
-    public function quickLogin(Request $request)
-    {
-        $data = $request->validate([
-            'staff_id' => ['required', 'string', 'exists:users,staff_id'],
-        ]);
-
-        $user = User::where('staff_id', $data['staff_id'])->first();
-
-        if (! $user || ! $user->is_active) {
-            return back()->withErrors(['staff_id' => 'That account is not available for quick login.']);
-        }
-
-        Auth::login($user);
-        $request->session()->regenerate();
-        $user->forceFill(['last_login_at' => now()])->save();
 
         return redirect()->intended(route('admin.dashboard'));
     }

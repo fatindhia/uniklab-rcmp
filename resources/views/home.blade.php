@@ -631,8 +631,20 @@
                 min-height: 60px;
             }
 
+            /* Day cells are only ~50px wide at 375px, so these chips have to stay
+               small — but 0.58rem rendered at 9.3px, which is below what most
+               people can read. Nudged up; the text still ellipsises. */
             .pc-bar {
-                font-size: 0.58rem;
+                font-size: 0.66rem;
+            }
+
+            /* iOS Safari zooms in on focus below 16px — see public/css/site.css. */
+            .pc-filter {
+                font-size: 16px;
+            }
+
+            .pc-more {
+                font-size: 0.66rem;
             }
         }
 

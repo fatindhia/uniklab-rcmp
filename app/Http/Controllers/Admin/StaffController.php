@@ -36,6 +36,8 @@ class StaffController extends Controller
             'email' => ['required', 'email', 'max:150', 'unique:users,email'],
             'phone_number' => ['nullable', 'string', 'max:30'],
             'role_id' => $this->assignableRoleIdRule(),
+            'lab_types' => ['nullable', 'array'],
+            'lab_types.*' => ['in:research,csl,pharma'],
             'password' => ['required', 'string', 'min:8'],
         ]);
 
@@ -45,6 +47,7 @@ class StaffController extends Controller
             'email' => $data['email'],
             'phone_number' => $data['phone_number'] ?? '',
             'role_id' => $data['role_id'],
+            'lab_types' => User::normalizeLabTypes($data['lab_types'] ?? null),
             'password_hash' => Hash::make($data['password']),
             'is_active' => true,
         ]);
@@ -62,6 +65,8 @@ class StaffController extends Controller
             'full_name' => ['required', 'string', 'max:150'],
             'phone_number' => ['nullable', 'string', 'max:30'],
             'role_id' => $this->assignableRoleIdRule($user),
+            'lab_types' => ['nullable', 'array'],
+            'lab_types.*' => ['in:research,csl,pharma'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
@@ -71,6 +76,7 @@ class StaffController extends Controller
             'full_name' => $data['full_name'],
             'phone_number' => $data['phone_number'] ?? '',
             'role_id' => $data['role_id'],
+            'lab_types' => User::normalizeLabTypes($data['lab_types'] ?? null),
             'is_active' => $request->boolean('is_active'),
         ]);
 
@@ -84,6 +90,14 @@ class StaffController extends Controller
                 $labels[$user->role_id] ?? $changes['role_id'][1],
             ];
             unset($changes['role_id']);
+        }
+
+        // Same for the lab type list, which is stored as raw JSON.
+        if (isset($changes['lab_types'])) {
+            $changes['lab_types'] = [
+                User::labelForLabTypes($before['lab_types'] ?? null) ?: '—',
+                $user->labTypesLabel() ?: '—',
+            ];
         }
 
         if ($changes) {

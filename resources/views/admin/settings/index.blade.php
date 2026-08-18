@@ -33,6 +33,9 @@
         .set-field { display: grid; gap: 5px; }
         .set-field span.lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
         .set-field input, .set-field textarea {
+            /* Same latent issue as the labs/staff modals: without these a control
+               keeps its intrinsic width and can push past its container. */
+            width: 100%; min-width: 0; box-sizing: border-box;
             padding: 11px 13px; border-radius: var(--radius-sm); border: 1.5px solid var(--line);
             font-family: inherit; font-size: .9rem; color: var(--ink); background: var(--bg);
             transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
@@ -53,6 +56,12 @@
             .set-toggle-row { flex-direction: column; }
             .set-card-foot { flex-direction: column; align-items: stretch; }
             .set-card-foot .button { width: 100%; }
+        }
+        /* Below 16px, iOS Safari zooms the page in on focus and never zooms
+           back out. This page sets its own control size, and its <style>
+           block loads after admin.css, so the override has to live here. */
+        @media (max-width: 900px) {
+            .set-field input, .set-field textarea { font-size: 16px; }
         }
     </style>
 
@@ -175,8 +184,24 @@
 
             toggle.addEventListener('change', function () {
                 if (toggle.checked && !initiallyOn) {
-                    var ok = confirm('Enable maintenance mode? Normal users will immediately be unable to submit new bookings.');
-                    if (!ok) { toggle.checked = false; return; }
+                    // Untick immediately and only re-tick once confirmed —
+                    // the dialog is async, so the switch can't be left showing
+                    // "on" while the admin is still deciding.
+                    toggle.checked = false;
+                    paint();
+
+                    confirmAction({
+                        title: 'Enable maintenance mode?',
+                        text: 'Normal users will immediately be unable to submit new bookings.',
+                        confirmText: 'Enable',
+                        danger: true,
+                    }).then(function (ok) {
+                        if (!ok) return;
+                        toggle.checked = true;
+                        paint();
+                    });
+
+                    return;
                 }
                 paint();
             });

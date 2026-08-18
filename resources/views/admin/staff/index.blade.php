@@ -5,6 +5,10 @@
         .af-field { display: grid; gap: 5px; }
         .af-field span.lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
         .af-field input, .af-field select, .af-field textarea {
+            /* Without width/min-width/box-sizing a control keeps its intrinsic
+               width and pushes out of its grid cell — invisible on a wide modal,
+               obvious once the column narrows on a phone. */
+            width: 100%; min-width: 0; box-sizing: border-box;
             min-height: 42px; padding: 0 12px; border-radius: var(--radius-sm); border: 1.5px solid var(--line);
             font-family: inherit; font-size: .9rem; color: var(--ink); background: var(--bg);
             transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
@@ -34,6 +38,28 @@
         .stf-card-meta strong { color: var(--ink); font-weight: 700; }
         .stf-card-foot { display: flex; justify-content: flex-end; }
 
+        /* Tick boxes, not switches: the lab types are a pick-many list rather
+           than on/off settings. Drawn the same way .stf-switch below is — the
+           native input hidden, the box painted on a span — so the two controls
+           still share their sizing, colours and focus ring. */
+        .stf-labtypes { display: grid; gap: 10px; }
+        .stf-labtypes label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .stf-labtypes input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .stf-check-box {
+            position: relative; width: 20px; height: 20px; flex-shrink: 0;
+            /* var(--radius-sm) is 10px — a pill on a box this small. */
+            border: 1.5px solid var(--line); border-radius: 6px; background: var(--bg);
+            transition: background .15s ease, border-color .15s ease;
+        }
+        .stf-check-box::after {
+            content: ''; position: absolute; left: 6px; top: 2.5px; width: 5px; height: 10px;
+            border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+            opacity: 0; transition: opacity .15s ease;
+        }
+        .stf-labtypes input:checked + .stf-check-box { background: var(--brand); border-color: var(--brand); }
+        .stf-labtypes input:checked + .stf-check-box::after { opacity: 1; }
+        .stf-labtypes input:focus-visible + .stf-check-box { outline: 2px solid var(--brand); outline-offset: 2px; }
+
         .stf-switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 22px; }
         .stf-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
         .stf-switch-track {
@@ -54,6 +80,20 @@
             .stf-table-wrap { display: none; }
             .stf-cards { display: grid; }
         }
+        /* Below 16px, iOS Safari zooms the page in on focus and never zooms
+           back out. This page sets its own control size, and its <style>
+           block loads after admin.css, so the override has to live here. */
+        @media (max-width: 640px) {
+            /* Two columns leave each field ~120px on a 375px screen — too narrow
+               for a name or a role select. One field per row instead. */
+            .af-modal-form-grid { grid-template-columns: 1fr; padding: 16px; }
+            /* The Active switch's top margin exists to line it up beside a field
+               in the two-column layout; stacked, it just leaves a gap. */
+            .stf-switch { margin-top: 4px; }
+        }
+        @media (max-width: 900px) {
+            .af-field input, .af-field select, .af-field textarea, .stf-search input { font-size: 16px; }
+        }
     </style>
 
     @php
@@ -63,6 +103,18 @@
         $stfRoles = $staff->pluck('role_id')->unique()->count();
         $initialsFor = function ($name) {
             return collect(preg_split('/\s+/', trim($name ?? '')))->filter()->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->take(2)->implode('') ?: '?';
+        };
+
+        // Which new-booking tickets this account receives, mirroring
+        // User::scopeBookingTicketRecipients(). Labels match the Manage Labs
+        // tabs. Only lab staff are scoped by lab type — and they may cover
+        // more than one area — while admins get every ticket and super admins
+        // get none.
+        $labTypeLabels = \App\Models\User::LAB_TYPE_LABELS;
+        $labTypeFor = fn ($user) => match ($user->role?->name) {
+            'lab_staff' => $user->labTypesLabel() ?: 'Not assigned',
+            'admin' => 'All labs',
+            default => 'No tickets',
         };
     @endphp
 
@@ -86,7 +138,7 @@
             <thead><tr><th>Staff</th><th>Role</th><th>Last Login</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
                 @forelse ($staff as $user)
-                    @php $staffJson = json_encode($user->only(['staff_id', 'full_name', 'phone_number', 'role_id', 'is_active'])); @endphp
+                    @php $staffJson = json_encode($user->only(['staff_id', 'full_name', 'phone_number', 'role_id', 'lab_types', 'is_active'])); @endphp
                     <tr class="staff-row-item" data-name="{{ strtolower($user->full_name . ' ' . $user->staff_id) }}">
                         <td>
                             <div class="stf-person">
@@ -97,7 +149,10 @@
                                 </div>
                             </div>
                         </td>
-                        <td><span class="badge">{{ $user->role?->label }}</span></td>
+                        <td>
+                            <span class="badge">{{ $user->role?->label }}</span>
+                            <div class="stf-id" style="margin-top:4px;">📧 {{ $labTypeFor($user) }}</div>
+                        </td>
                         <td class="muted">{{ $user->last_login_at?->format('d/m/Y, H:i') ?? 'Never' }}</td>
                         <td class="muted">{{ $user->email }}</td>
                         <td><span class="badge badge-{{ $user->is_active ? 'approved' : 'rejected' }}">{{ $user->is_active ? 'Active' : 'Inactive' }}</span></td>
@@ -115,7 +170,7 @@
 
     <div class="stf-cards">
         @forelse ($staff as $user)
-            @php $staffJson2 = json_encode($user->only(['staff_id', 'full_name', 'phone_number', 'role_id', 'is_active'])); @endphp
+            @php $staffJson2 = json_encode($user->only(['staff_id', 'full_name', 'phone_number', 'role_id', 'lab_types', 'is_active'])); @endphp
             <article class="stf-card staff-row-item" data-name="{{ strtolower($user->full_name . ' ' . $user->staff_id) }}">
                 <div class="stf-card-top">
                     <div class="stf-person">
@@ -129,6 +184,7 @@
                 </div>
                 <div class="stf-card-meta">
                     <span><strong>Role:</strong> {{ $user->role?->label }}</span>
+                    <span><strong>Booking emails:</strong> {{ $labTypeFor($user) }}</span>
                     <span><strong>Last Login:</strong> {{ $user->last_login_at?->format('d/m/Y, H:i') ?? 'Never' }}</span>
                     <span><strong>Email:</strong> {{ $user->email }}</span>
                 </div>
@@ -160,14 +216,31 @@
                     </label>
                     <label class="af-field">
                         <span class="lbl">Role *</span>
-                        <select name="role_id" id="staff-role" required>
+                        <select name="role_id" id="staff-role" required onchange="syncStaffLabTypeField()">
                             @foreach ($roles as $role)
                                 {{-- super_admin is granted in the database only, never pickable here; --}}
                                 {{-- kept as a hidden option so it can still display for an existing super admin's own record --}}
-                                <option value="{{ $role->id }}" @if ($role->name === 'super_admin') hidden @endif>{{ $role->label }}</option>
+                                <option value="{{ $role->id }}" data-role-name="{{ $role->name }}" @if ($role->name === 'super_admin') hidden @endif>{{ $role->label }}</option>
                             @endforeach
                         </select>
                     </label>
+                    {{-- Only lab staff are scoped by lab type: admins receive every booking --}}
+                    {{-- ticket and super admins receive none, so the field is hidden for both. --}}
+                    {{-- Checkboxes rather than a dropdown because some staff look after --}}
+                    {{-- more than one area (e.g. Pharma and CSL). --}}
+                    <div class="af-field" id="staff-lab-type-field" style="grid-column:1/-1;">
+                        <span class="lbl">Lab Types</span>
+                        <div class="stf-labtypes">
+                            @foreach ($labTypeLabels as $value => $label)
+                                <label>
+                                    <input type="checkbox" name="lab_types[]" value="{{ $value }}" class="staff-lab-type-input">
+                                    <span class="stf-check-box" aria-hidden="true"></span>
+                                    <span class="stf-switch-label">{{ $label }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <span class="stf-id">No booking emails when all are off.</span>
+                    </div>
                     <label class="af-field" style="grid-column:1/-1;">
                         <span class="lbl">Full Name *</span>
                         <input type="text" name="full_name" id="staff-name" required>
@@ -240,7 +313,24 @@
             document.getElementById('staff-active-field').style.display = isEdit ? 'flex' : 'none';
             document.getElementById('staff-active').checked = staff?.is_active ?? true;
 
+            const labTypes = staff?.lab_types || [];
+            document.querySelectorAll('.staff-lab-type-input').forEach(function (cb) {
+                cb.checked = labTypes.includes(cb.value);
+            });
+            syncStaffLabTypeField();
+
             document.getElementById('staffModalOverlay').classList.add('open');
+        }
+
+        // Lab Types only mean something for lab staff — admins get every booking
+        // ticket and super admins get none — so hide the field for the other roles
+        // rather than showing one that has no effect. Unticking on the way out keeps
+        // stale lab types from being submitted after a role change.
+        function syncStaffLabTypeField() {
+            const role = document.getElementById('staff-role');
+            const isLabStaff = role.selectedOptions[0]?.dataset.roleName === 'lab_staff';
+            document.getElementById('staff-lab-type-field').style.display = isLabStaff ? 'grid' : 'none';
+            if (!isLabStaff) document.querySelectorAll('.staff-lab-type-input').forEach(cb => { cb.checked = false; });
         }
 
         function closeStaffModal(e) {

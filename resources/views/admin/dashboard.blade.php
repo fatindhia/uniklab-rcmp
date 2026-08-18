@@ -40,6 +40,12 @@
         .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
         .panel-head h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
         .panel-head .link { font-size: 0.8rem; font-weight: 700; color: var(--brand-2); text-decoration: none; }
+        /* These sit alone in a panel header rather than inside a sentence, so
+           unlike an inline text link they can take padding to reach a
+           thumb-friendly height without disturbing anything around them. */
+        @media (max-width: 900px) {
+            .panel-head .link { display: inline-block; padding: 8px 0; }
+        }
         .panel-scroll { flex: 1; max-height: 440px; overflow-y: auto; }
         .panel-scroll:has(.dash-empty) { display: flex; flex-direction: column; justify-content: center; }
         /* Default OS scrollbars (esp. macOS overlay) stay invisible until hovered,

@@ -104,8 +104,8 @@
         .site-header.scrolled .site-header-inner { padding: 14px 0; }
 
         .brand { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
-        .brand-logo { height: 36px; width: auto; display: block; transition: height 0.25s ease; }
-        .site-header.scrolled .brand-logo { height: 30px; }
+        .brand-logo { height: 40px; width: auto; display: block; transition: height 0.25s ease; }
+        .site-header.scrolled .brand-logo { height: 34px; }
 
         .site-nav { display: flex; align-items: center; }
         .site-nav a {
@@ -119,6 +119,46 @@
         .site-nav a.pill:hover { border-color: var(--brand); }
         .site-nav a.cta { margin-left: 6px; padding: 11px 22px; border-radius: 999px; background: var(--grad); color: #fff; font-weight: 700; box-shadow: 0 10px 22px -12px rgba(125, 145, 148, 0.6); }
         .site-nav a.cta:hover { transform: translateY(-1px); }
+        /* Staff-only entry point: pushed past the public links with a divider so
+           it reads as separate from them, and reduced to its icon. */
+        .site-nav a.nav-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 38px; height: 38px; padding: 0; margin-left: 14px;
+            border-radius: 999px; color: var(--brand-2);
+            background: rgba(125, 145, 148, 0.14);
+            border: 1px solid rgba(74, 95, 98, 0.22);
+            transition: color .15s ease, background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+        }
+        .site-nav a.nav-icon::before {
+            content: ''; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+            width: 1px; height: 22px; background: var(--line);
+        }
+        /* Fills in on hover so it clearly reads as a button, without competing
+           with the solid "Book a Lab" CTA next to it. */
+        .site-nav a.nav-icon:hover {
+            color: #fff; background: var(--brand-2); border-color: var(--brand-2);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px -10px rgba(74, 95, 98, 0.8);
+        }
+        /* Hover label, from data-tip on the anchor. ::before is already taken by
+           the divider, so the bubble uses ::after — which also means the shared
+           .site-nav a.active underline can't apply here, and it shouldn't:
+           a dash under a round icon reads as a stray mark. */
+        .site-nav a.nav-icon::after {
+            content: attr(data-tip);
+            position: absolute; top: calc(100% + 9px); left: 50%;
+            transform: translateX(-50%) translateY(-3px);
+            padding: 5px 10px; border-radius: 8px;
+            background: var(--ink-2); color: #fff;
+            font-size: 0.72rem; font-weight: 700; white-space: nowrap;
+            box-shadow: 0 10px 20px -10px rgba(34, 29, 30, 0.85);
+            opacity: 0; pointer-events: none;
+            transition: opacity .15s ease, transform .15s ease;
+        }
+        .site-nav a.nav-icon:hover::after,
+        .site-nav a.nav-icon:focus-visible::after {
+            opacity: 1; transform: translateX(-50%) translateY(0);
+        }
 
         @media (max-width: 880px) {
             .site-nav { display: none; }
@@ -144,7 +184,7 @@
         .site-footer { padding: 56px 0 0; }
         .footer-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 32px; padding-bottom: 40px; }
         .footer-brand { margin-bottom: 14px; }
-        .footer-logo { height: 28px; width: auto; display: block; background: #fff; padding: 8px 14px; border-radius: 10px; }
+        .footer-logo { height: 34px; width: auto; display: block; }
         .footer-desc { color: rgba(255, 255, 255, 0.56); font-size: 0.9rem; line-height: 1.6; max-width: 34ch; }
         .footer-col h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.5); margin-bottom: 14px; }
         .footer-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -156,4 +196,21 @@
         }
         @media (max-width: 760px) {
             .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+        }
+
+        @media (max-width: 880px) {
+            /* iOS Safari zooms the whole page in whenever a focused form control
+               renders its text below 16px, and does not zoom back out — the
+               visitor is left pinched in halfway through the booking form. 16px
+               is the exact threshold, so every control gets it on small screens.
+               Applies to any control without a more specific rule of its own;
+               the pages that do set their own size repeat this in their own
+               <style> block. */
+            input, select, textarea { font-size: 16px; }
+
+            /* Footer links were 18px tall — the text line and nothing more.
+               Padding brings them to a comfortable thumb size without changing
+               how the list looks. */
+            .footer-col ul { gap: 0; }
+            .footer-col a { display: inline-block; padding: 9px 0; }
         }

@@ -91,8 +91,14 @@ class ActivityLog extends Model
             return $value ? 'Yes' : 'No';
         }
 
-        if ($value === null || $value === '') {
+        if ($value === null || $value === '' || $value === []) {
             return '—';
+        }
+
+        // JSON columns (users.lab_types) arrive here as arrays; casting one to
+        // a string would only warn and print "Array".
+        if (is_array($value)) {
+            return implode(', ', $value);
         }
 
         return (string) $value;

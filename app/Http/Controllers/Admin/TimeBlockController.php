@@ -78,7 +78,10 @@ class TimeBlockController extends Controller
             'lab_type' => ['required', 'in:research,csl,pharma'],
             'blocks' => ['required', 'array', 'min:1'],
             'blocks.*.room' => ['required', 'string', 'max:150'],
-            'blocks.*.block_date' => ['required', 'date'],
+            // Blocking a slot that has already gone changes nothing — the room
+            // was never bookable for it anyway — and a recurring block seeded
+            // from a past date would put its occurrences in the past too.
+            'blocks.*.block_date' => ['required', 'date', 'after_or_equal:today'],
             'blocks.*.start_time' => ['required', 'date_format:H:i', 'after_or_equal:08:00'],
             'blocks.*.end_time' => ['required', 'date_format:H:i', 'before_or_equal:17:00'],
             'blocks.*.equipment' => ['nullable', 'array'],
@@ -90,7 +93,11 @@ class TimeBlockController extends Controller
             'blocks.*.pic' => ['nullable', 'string', 'max:150'],
             'blocks.*.recurring' => ['required', 'in:none,weekly,biweekly'],
             'blocks.*.notes' => ['nullable', 'string'],
-        ], [], [
+        ], [
+            'blocks.*.block_date.after_or_equal' => 'The block date cannot be in the past.',
+            'blocks.*.start_time.after_or_equal' => 'Blocks can only start from 08:00.',
+            'blocks.*.end_time.before_or_equal' => 'Blocks must end by 17:00.',
+        ], [
             'blocks.*.room' => 'room',
             'blocks.*.block_date' => 'date',
             'blocks.*.start_time' => 'start time',
@@ -107,6 +114,14 @@ class TimeBlockController extends Controller
 
             if ($entry['end_time'] <= $entry['start_time']) {
                 $messages['blocks.'.$index.'.end_time'] = $room.': end time must be after start time.';
+
+                continue;
+            }
+
+            // after_or_equal:today admits today, but a slot that already ended
+            // today is still in the past.
+            if ($entry['block_date'] === today()->toDateString() && $entry['end_time'] <= now()->format('H:i')) {
+                $messages['blocks.'.$index.'.start_time'] = $room.': that time has already passed today.';
 
                 continue;
             }
@@ -228,5 +243,35 @@ class TimeBlockController extends Controller
         BookingCalendar::flush();
 
         return back()->with('status', 'Time block removed.');
+    }
+
+    /**
+     * One block as JSON, for the calendar's hover card.
+     *
+     * The cached calendar payload only carries what the grid draws (title,
+     * rooms, times); equipment, notes, recurrence and who created it are
+     * fetched here for the single block being hovered, mirroring
+     * Admin\BookingController::details().
+     */
+    public function details(TimeBlock $timeBlock)
+    {
+        $timeBlock->loadMissing('creator');
+
+        return response()->json([
+            'id' => $timeBlock->id,
+            'title' => $timeBlock->title,
+            'purpose' => $timeBlock->purpose,
+            'lab_type' => $timeBlock->lab_type,
+            'pic' => $timeBlock->pic,
+            'date' => $timeBlock->block_date?->format('d/m/Y'),
+            'start' => substr((string) $timeBlock->start_time, 0, 5),
+            'end' => substr((string) $timeBlock->end_time, 0, 5),
+            'rooms' => $timeBlock->rooms ?? [],
+            'equipment' => $timeBlock->equipment ?? [],
+            'recurring' => $timeBlock->recurring,
+            'notes' => $timeBlock->notes,
+            'created_by' => $timeBlock->creator?->full_name,
+            'created_at' => $timeBlock->created_at?->format('d/m/Y, H:i'),
+        ]);
     }
 }

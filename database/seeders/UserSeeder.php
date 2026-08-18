@@ -14,6 +14,10 @@ class UserSeeder extends Seeder
             ['staff_id' => '620798'],
             [
                 'role_id' => 2,
+                // Lab staff only receive booking tickets for the lab types they
+                // are assigned to, so seed one rather than leaving this account
+                // with no notifications on a fresh install.
+                'lab_types' => ['research'],
                 'full_name' => 'System Administrator',
                 'email' => 'fatindhiya07@gmail.com',
                 'phone_number' => '',

@@ -68,6 +68,15 @@
         .sb-meta { font-size: .76rem; color: var(--muted); margin-top: 3px; }
         .sb-rooms { font-size: .74rem; color: var(--muted); margin-top: 2px; }
         .sb-note { font-size: .72rem; color: var(--muted); font-style: italic; margin-top: 2px; }
+        /* Below 16px, iOS Safari zooms the page in on focus and never zooms
+           back out. This page sets its own control size, and its <style>
+           block loads after admin.css, so the override has to live here. */
+        .sc-today-btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 2px 8px; font-size: .68rem; font-weight: 700; color: var(--muted); cursor: pointer; }
+        @media (max-width: 900px) {
+            .tb-search { font-size: 16px; }
+            /* Was an 18px-tall button — too small to hit reliably with a thumb. */
+            .sc-today-btn { min-height: 34px; padding: 0 12px; font-size: .76rem; }
+        }
     </style>
 
     <section class="kpi-grid tb-kpi-grid">
@@ -90,7 +99,7 @@
                     <button type="button" class="cal-nav" id="sc-prev">&#8249;</button>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span class="cal-month-label" id="sc-label">—</span>
-                        <button type="button" onclick="scGoToday()" style="border:1px solid var(--line); background:#fff; border-radius:8px; padding:2px 8px; font-size:.68rem; font-weight:700; color:var(--muted); cursor:pointer;">Today</button>
+                        <button type="button" onclick="scGoToday()" class="sc-today-btn">Today</button>
                     </div>
                     <button type="button" class="cal-nav" id="sc-next">&#8250;</button>
                 </div>
@@ -178,7 +187,11 @@
                 <div class="sc-slot-bar">
                     <label class="sc-bar-group" style="margin:0;">
                         <span class="sc-bar-lbl">Date</span>
-                        <input type="date" id="sc-room-date" class="tb-field" style="min-height:32px; padding:0 10px; font-size:.8rem;" onchange="scSetRoomDate(this.value)">
+                        {{-- Sizing lives in .tb-field--compact rather than inline, so the
+                             mobile rule that lifts controls to 16px can override it. --}}
+                        {{-- min keeps the native picker off past dates; TimeBlockController::store()
+                             re-checks, since the attribute is trivially bypassed. --}}
+                        <input type="date" id="sc-room-date" class="tb-field tb-field--compact" min="{{ today()->toDateString() }}" onchange="scSetRoomDate(this.value)">
                     </label>
                     <span class="sc-bar-sep"></span>
                     <div class="sc-bar-group">
@@ -286,7 +299,7 @@
                         <div class="sb-note">{{ $block->notes }}</div>
                     @endif
                 </div>
-                <form method="POST" action="{{ route('admin.time-blocks.destroy', $block) }}" onsubmit="return confirm('Remove this block?');" style="flex-shrink:0;">
+                <form method="POST" action="{{ route('admin.time-blocks.destroy', $block) }}" onsubmit="return scConfirmRemoveBlock(this);" style="flex-shrink:0;">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="button button-danger" style="min-height:32px; padding:0 12px; font-size:.74rem;">✕ Remove</button>
@@ -309,6 +322,9 @@
         // schedules: room name -> its own { date, durMins, startTime, endTime }.
         // The calendar date picked in step 1 is only the default each room
         // starts from — every room can be moved to its own date and slot.
+        // Server's today, not the browser's — a device with a wrong clock would
+        // otherwise disagree with the rule TimeBlockController::store() applies.
+        const SC_TODAY = @json(today()->toDateString());
         let SC = { step: 1, date: '', labType: '', rooms: [], equipment: [], schedules: {}, activeRoom: '' };
 
         function scToMin(t) { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
@@ -351,6 +367,13 @@
         }
 
         function scSelectDate(ds) {
+            // Stop the wizard at the first step rather than letting the admin
+            // pick rooms and times for a date that can never be saved.
+            if (ds < SC_TODAY) {
+                notifyError('That date has already passed — a block can only be set for today onwards.');
+                return;
+            }
+
             SC = { step: 1, date: ds, labType: '', rooms: [], equipment: [], schedules: {}, activeRoom: '' };
             const scDate = new Date(ds + 'T00:00:00');
             const fmt = scDate.toLocaleDateString('en-MY', { weekday: 'short' }) + ', ' + String(scDate.getDate()).padStart(2, '0') + '/' + String(scDate.getMonth() + 1).padStart(2, '0') + '/' + scDate.getFullYear();
@@ -544,6 +567,13 @@
         // old date's occupancy, so the choice is cleared rather than carried over.
         function scSetRoomDate(value) {
             if (!value) return;
+            // Typed dates bypass the picker's min, so clamp here as well —
+            // otherwise the whole slot is built against a date the server will
+            // reject only at the very end.
+            if (value < SC_TODAY) {
+                notifyError('That date has already passed. Pick today or a later date.');
+                value = SC_TODAY;
+            }
             const s = scRoomSched(SC.activeRoom);
             s.date = value; s.startTime = ''; s.endTime = '';
             scRenderRoomEditor();
@@ -576,7 +606,7 @@
             scRenderRoomEditor();
 
             if (clashed.length) {
-                alert('This slot isn\'t free for: ' + clashed.join(', ') + '.\nThose rooms were left as they are — set their times individually.');
+                notifyError('This slot isn\'t free for: ' + clashed.join(', ') + '. Those rooms were left as they are — set their times individually.');
             }
         }
 
@@ -850,7 +880,26 @@
         }
 
         function scSlotUnavailable(reason) {
-            alert(reason);
+            notifyError(reason);
+        }
+
+        // Async confirm, so block the submit and replay it once confirmed —
+        // same pattern as confirmDeleteLab() on the Manage Labs page.
+        function scConfirmRemoveBlock(form) {
+            if (form.dataset.confirmed === '1') return true;
+
+            confirmAction({
+                title: 'Remove this block?',
+                text: 'The slot will become bookable again.',
+                confirmText: 'Remove',
+                danger: true,
+            }).then(function (ok) {
+                if (!ok) return;
+                form.dataset.confirmed = '1';
+                form.submit();
+            });
+
+            return false;
         }
 
         const SC_PURPOSES = [

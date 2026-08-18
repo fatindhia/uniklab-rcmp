@@ -17,19 +17,29 @@
     <header class="site-header" id="site-header">
         <div class="band-inner site-header-inner">
             <a class="brand" href="{{ route('home') }}">
-                <img class="brand-logo" src="{{ asset('images/logo.png') }}" alt="{{ config('app.name', 'Lab Booking') }}">
+                <img class="brand-logo" src="{{ asset('images/logo-dark.png') }}" alt="{{ config('app.name', 'Lab Booking') }}">
             </a>
 
             <nav class="site-nav">
                 <a href="{{ route('home') }}" class="{{ request()->routeIs('home') ? 'active' : '' }}">Home</a>
                 <a href="{{ route('bookings.lookup') }}" class="{{ request()->routeIs('bookings.lookup') ? 'active' : '' }}">Check Booking</a>
                 <a href="#" role="button" onclick="event.preventDefault(); openInfoModal();">Info</a>
-                @auth
-                    <a class="pill" href="{{ route('admin.dashboard') }}">Admin</a>
-                @else
-                    <a class="pill" href="{{ route('login') }}">Admin Login</a>
-                @endauth
                 <a class="cta" href="{{ route('booking.create') }}">Book a Lab</a>
+
+                {{-- Admin entry is for staff, not the public, so it sits apart at
+                     the far right as an icon only. Title + aria-label carry the
+                     meaning now that the text label is gone. --}}
+                {{-- data-tip renders the hover label via CSS. No title attribute:
+                     the browser's own tooltip would appear on top of it. --}}
+                @auth
+                    <a class="nav-icon" href="{{ route('admin.dashboard') }}" data-tip="For Administrator" aria-label="Admin panel — for administrators">
+                        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+                    </a>
+                @else
+                    <a class="nav-icon" href="{{ route('login') }}" data-tip="For Administrator" aria-label="Admin login — for administrators">
+                        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+                    </a>
+                @endauth
             </nav>
         </div>
     </header>
@@ -53,7 +63,6 @@
                         <li><a href="{{ route('home') }}">Home</a></li>
                         <li><a href="{{ route('booking.create') }}">Book a Lab</a></li>
                         <li><a href="{{ route('bookings.lookup') }}">Check Booking</a></li>
-                        <li><a href="{{ route('login') }}">Admin Login</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">

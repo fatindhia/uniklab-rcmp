@@ -20,10 +20,11 @@
     <div class="rows">
         <div class="row"><span class="lbl">Reference</span><span class="val">{{ $booking->ref }}</span></div>
         <div class="row"><span class="lbl">Lab type</span><span class="val">{{ ucfirst($booking->lab_type) }}</span></div>
-        <div class="row"><span class="lbl">Room(s)</span><span class="val">{{ $booking->rooms->pluck('lab.name')->filter()->join(', ') ?: '—' }}</span></div>
         <div class="row"><span class="lbl">Date</span><span class="val">{{ $booking->date_range_label }}</span></div>
         <div class="row"><span class="lbl">Time</span><span class="val">{{ \Illuminate\Support\Carbon::parse($booking->start_time)->format('H:i') }} – {{ \Illuminate\Support\Carbon::parse($booking->end_time)->format('H:i') }}</span></div>
     </div>
+
+    @include('emails.bookings._rooms')
 
     @if ($roomReassignedFrom)
         <p class="lede" style="margin-top:18px; margin-bottom:0;">Note: your room was reassigned during review, from <strong>{{ $roomReassignedFrom }}</strong> to <strong>{{ $booking->rooms->pluck('lab.name')->filter()->join(', ') ?: 'a new room' }}</strong>.</p>

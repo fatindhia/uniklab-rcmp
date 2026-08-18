@@ -46,6 +46,7 @@ class Booking extends Model
         'processed_by',
         'processed_at',
         'submitted_at',
+        'reminder_sent_at',
     ];
 
     protected function casts(): array
@@ -59,6 +60,7 @@ class Booking extends Model
             'pharma_tc_accepted' => 'boolean',
             'processed_at' => 'datetime',
             'submitted_at' => 'datetime',
+            'reminder_sent_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
     }
@@ -86,6 +88,20 @@ class Booking extends Model
         }
 
         return $from->format('d/m/Y');
+    }
+
+    /**
+     * When the booking actually starts. The date and the time live in separate
+     * columns, so anything comparing a booking against "now" — the pending
+     * reminder, most obviously — has to recombine them first.
+     */
+    public function getStartsAtAttribute(): ?\Illuminate\Support\Carbon
+    {
+        if (! $this->booking_date_from || ! $this->start_time) {
+            return null;
+        }
+
+        return $this->booking_date_from->copy()->setTimeFrom($this->start_time);
     }
 
     public function rooms()

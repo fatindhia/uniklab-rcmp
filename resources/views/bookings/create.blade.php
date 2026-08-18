@@ -221,6 +221,18 @@
             font-weight: 700; margin-bottom: 20px;
         }
         @media (max-width: 640px) { .review-grid { grid-template-columns: 1fr; } }
+
+        @media (max-width: 880px) {
+            /* Matches the specificity of the .field rules above so it actually
+               wins. Under 16px, iOS Safari zooms in on focus and leaves the
+               applicant pinched in — see the note in public/css/site.css. */
+            .field input[type="text"], .field input[type="email"], .field input[type="number"],
+            .field input[type="date"], .field input[type="time"], .field select, .field textarea {
+                font-size: 16px;
+            }
+            /* 11.2px is below comfortable reading size on a phone. */
+            .review-label { font-size: 0.75rem; }
+        }
     </style>
 
     @if ($maintenanceBlocked ?? false)
@@ -373,13 +385,16 @@
                             }
                         @endphp
                         <div class="grid-3" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px;">
+                            {{-- min stops the native picker offering past dates at all;
+                                 BookingController::store() re-checks server-side, since a
+                                 min attribute is trivially bypassed. --}}
                             <label class="field">
                                 <span class="muted">Date from<span class="req">*</span></span>
-                                <input type="date" name="booking_date_from" value="{{ old('booking_date_from') }}" required>
+                                <input type="date" name="booking_date_from" id="booking-date-from" min="{{ today()->toDateString() }}" value="{{ old('booking_date_from') }}" required>
                             </label>
                             <div class="field" id="date-to-field" style="{{ old('booking_date_to') ? '' : 'display:none;' }}">
                                 <span class="muted">Date to<span class="req">*</span></span>
-                                <input type="date" name="booking_date_to" value="{{ old('booking_date_to') }}">
+                                <input type="date" name="booking_date_to" id="booking-date-to" min="{{ today()->toDateString() }}" value="{{ old('booking_date_to') }}">
                             </div>
                         </div>
                         <div class="grid-3" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:12px;">
@@ -728,10 +743,10 @@
 
                     @if ($type === 'pharma')
                         <div id="pharma-denied" class="card empty" style="display:none; padding:22px; text-align:left; border-left:4px solid #a03027; background:rgba(212,52,42,.06);">
-                            <strong style="color:#a03027; font-size:1.05rem;">🚫 Pharma Lab access is restricted to staff</strong>
+                            <strong style="color:#a03027; font-size:1.05rem;">🚫 Staff access only</strong>
                             <p class="muted" style="margin-top:8px;">
-                                Pharma Lab bookings can only be made by {{ implode(', ', config('booking.pharma_allowed_roles')) }} using a staff email ({{ '@' . $staffEmailDomain }}).
-                                It looks like you entered a student email — please correct it above, or use the <a href="{{ route('booking.create', ['type' => 'equipment']) }}">Research &amp; Development lab</a> or <a href="{{ route('booking.create', ['type' => 'csl']) }}">CSL lab</a> booking form instead.
+                                Pharma Lab bookings are limited to {{ implode(', ', config('booking.pharma_allowed_roles')) }}.
+                                Try the <a href="{{ route('booking.create', ['type' => 'equipment']) }}">Research &amp; Development</a> or <a href="{{ route('booking.create', ['type' => 'csl']) }}">CSL</a> form instead.
                             </p>
                         </div>
                     @endif
@@ -1291,6 +1306,55 @@
                     scheduleEquipmentAvailabilityFetch();
                 });
             }
+
+            // Past date/time can't be selected in the first place. The server
+            // re-checks all of this in BookingController::store() — this only
+            // saves the applicant from filling in a form that can't be accepted.
+            (function () {
+                const TODAY = @json(today()->toDateString());
+                const dateFrom = document.getElementById('booking-date-from');
+                const dateTo = document.getElementById('booking-date-to');
+                const startSel = form.elements['start_time'];
+                const endSel = form.elements['end_time'];
+                if (!dateFrom) return;
+
+                // "HH:MM" right now, used to grey out slots that have gone by.
+                function nowHm() {
+                    const d = new Date();
+                    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+                }
+
+                function syncTimeOptions() {
+                    const isToday = dateFrom.value === TODAY;
+                    const cutoff = nowHm();
+                    [startSel, endSel].forEach((sel) => {
+                        if (!sel) return;
+                        Array.from(sel.options).forEach((opt) => {
+                            if (!opt.value) return;
+                            const past = isToday && opt.value <= cutoff;
+                            opt.disabled = past;
+                            // A slot already chosen before the date changed to
+                            // today has to be cleared, or it would submit anyway.
+                            if (past && sel.value === opt.value) sel.value = '';
+                        });
+                    });
+                }
+
+                function syncDateTo() {
+                    if (!dateTo) return;
+                    // An end date before the start date is never valid.
+                    dateTo.min = dateFrom.value || TODAY;
+                    if (dateTo.value && dateTo.value < dateTo.min) dateTo.value = dateFrom.value;
+                }
+
+                dateFrom.addEventListener('change', () => { syncDateTo(); syncTimeOptions(); });
+                startSel?.addEventListener('change', syncTimeOptions);
+                syncDateTo();
+                syncTimeOptions();
+                // Re-check on return to the tab: a form left open past a slot's
+                // start would otherwise still offer it.
+                document.addEventListener('visibilitychange', () => { if (!document.hidden) syncTimeOptions(); });
+            })();
 
             // Live availability check: as soon as date/time/room/equipment change,
             // ask the server (min. booking length, CSL advance-notice + room buffer,

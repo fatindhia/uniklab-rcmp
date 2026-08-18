@@ -19,7 +19,7 @@ class BookingStatusUpdated extends Mailable
 
     public function __construct(public Booking $booking, public string $status, public ?string $roomReassignedFrom = null)
     {
-        $this->booking->loadMissing('rooms.lab');
+        $this->booking->loadMissing(['rooms.lab', 'equipment.lab']);
     }
 
     public function build(): self

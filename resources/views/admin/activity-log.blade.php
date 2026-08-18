@@ -51,6 +51,7 @@
             'capacity' => 'Capacity', 'status' => 'Status', 'is_room_only' => 'Room-only',
             'weekends_allowed' => 'Weekends allowed', 'requires_special_conditions' => 'Special conditions',
             'notes' => 'Notes', 'equipment' => 'Equipment', 'role' => 'Role', 'is_active' => 'Active',
+            'lab_types' => 'Lab types',
             'phone_number' => 'Phone', 'email' => 'Email',
         ];
     @endphp

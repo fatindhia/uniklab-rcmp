@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Mail;
 
 class BookingController extends Controller
 {
+    /** Minimum characters for a decision remark or cancellation reason. */
+    public const MIN_EXPLANATION_CHARS = 5;
+
     /**
      * Columns the bookings table can be sorted by, keyed by the value used in
      * the ?sort= query string.
@@ -161,11 +164,28 @@ class BookingController extends Controller
         return $this->withRelations()->where('ref', $ref)->first();
     }
 
+    /**
+     * One booking as JSON, for the calendar's hover card.
+     *
+     * The calendar's own cached payload (BookingCalendar::events()) carries
+     * only what the grid needs — adding equipment, students and contact
+     * details to it would bloat every cached day for the sake of a tooltip.
+     * This fetches them for the single booking being hovered instead, reusing
+     * the same shape the detail modal already consumes so there is only one
+     * payload definition to keep correct.
+     */
+    public function details(Booking $booking)
+    {
+        return response()->json(
+            BookingModalPayload::build($this->withRelations()->whereKey($booking->getKey())->firstOrFail())
+        );
+    }
+
     public function update(Request $request, Booking $booking)
     {
         $data = $request->validate([
             'status' => ['required', 'in:approved,rejected'],
-            'admin_remark' => ['required', 'string'],
+            'admin_remark' => $this->explanationRule(),
         ]);
 
         // A room reassigned while still pending doesn't get its own email
@@ -207,7 +227,7 @@ class BookingController extends Controller
         }
 
         $data = $request->validate([
-            'reason' => ['required', 'string'],
+            'reason' => $this->explanationRule(),
         ]);
 
         // Same fold-in as update() — only relevant when cancelling straight
@@ -240,6 +260,24 @@ class BookingController extends Controller
         }
 
         return back()->with('status', "Booking {$booking->ref} cancelled.");
+    }
+
+    /**
+     * Decision remarks and cancellation reasons are copied straight into the
+     * email the applicant receives. This only rules out throwaway entries like
+     * "ok" or "no" — a single deliberate word such as "approved" is fine, so
+     * the bar is a short minimum length rather than a word count.
+     *
+     * Input is already whitespace-trimmed by the TrimStrings middleware, so
+     * spaces can't pad a value up to the limit.
+     */
+    private function explanationRule(): array
+    {
+        return [
+            'required',
+            'string',
+            'min:'.self::MIN_EXPLANATION_CHARS,
+        ];
     }
 
     /**

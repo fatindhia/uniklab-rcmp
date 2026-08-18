@@ -13,7 +13,7 @@ class BookingSubmitted extends Mailable
 
     public function __construct(public Booking $booking)
     {
-        $this->booking->loadMissing('rooms.lab');
+        $this->booking->loadMissing(['rooms.lab', 'equipment.lab']);
     }
 
     public function build(): self

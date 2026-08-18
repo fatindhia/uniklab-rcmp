@@ -18,6 +18,7 @@ use App\Support\EquipmentConditions;
 use App\Support\Maintenance;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
@@ -104,7 +105,10 @@ class BookingController extends Controller
             'applicant_role' => ['required', 'string', 'in:'.implode(',', array_merge($staffRoles, $studentRoles))],
             'applicant_group' => ['nullable', 'string', 'max:30'],
             'applicant_remark' => ['nullable', 'string', 'max:1000'],
-            'booking_date_from' => ['required', 'date'],
+            // A booking can only ever be for now or later. Without this a
+            // backdated booking would take up a room in the calendar and the
+            // conflict checks below, for a slot that has already gone.
+            'booking_date_from' => ['required', 'date', 'after_or_equal:today'],
             'booking_date_to' => ['nullable', 'date', 'after_or_equal:booking_date_from'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
@@ -126,6 +130,12 @@ class BookingController extends Controller
             'pax_ids' => ['array'],
             'pax_ids.*' => ['nullable', 'string', 'max:30'],
             'pharma_tc_accepted' => ['nullable', 'boolean'],
+        ], [
+            // The generated wording ("The booking date from field must be a date
+            // after or equal to today") reads like a rule, not an instruction.
+            'booking_date_from.after_or_equal' => 'The booking date cannot be in the past.',
+            'booking_date_to.after_or_equal' => 'The end date cannot be earlier than the start date.',
+            'end_time.after' => 'The end time must be later than the start time.',
         ]);
 
         // --- Email domain -> applicant category (staff/student), and role cross-check ---
@@ -182,6 +192,14 @@ class BookingController extends Controller
         $bookingDate = \Carbon\Carbon::parse($data['booking_date_from']);
         $bookingDateTo = $data['booking_date_to'] ?? $data['booking_date_from'];
         $isWeekend = $bookingDate->isWeekend();
+
+        // after_or_equal:today lets today through, but a slot earlier today has
+        // already gone — the date rule alone can't see that.
+        if ($bookingDate->isToday() && $data['start_time'] <= now()->format('H:i')) {
+            throw ValidationException::withMessages([
+                'start_time' => 'That time has already passed today. Pick a later time, or a later date.',
+            ]);
+        }
 
         if ($type === 'equipment') {
             $rules = config('booking.research');
@@ -462,27 +480,41 @@ class BookingController extends Controller
     }
 
     /**
-     * Confirmation ticket to the applicant, plus a heads-up to every active
-     * lab staff/super admin — best-effort: a mail failure shouldn't
-     * undo an already-committed booking.
+     * Confirmation ticket to the applicant, plus a heads-up to the staff who
+     * actually handle this booking's lab area — best-effort: a mail failure
+     * shouldn't undo an already-committed booking.
      */
     private function sendBookingSubmittedEmails(Booking $booking): void
     {
+        $accepted = [];
+
         try {
             Mail::to($booking->applicant_email)->send(new BookingSubmitted($booking));
-
-            // Every panel role handles bookings, so all three get the ticket.
-            $adminEmails = User::whereHas('role', fn ($q) => $q->whereIn('name', ['lab_staff', 'admin', 'super_admin']))
-                ->where('is_active', true)
-                ->pluck('email')
-                ->filter();
-
-            foreach ($adminEmails as $adminEmail) {
-                Mail::to($adminEmail)->send(new NewBookingTicket($booking));
-            }
+            $accepted[] = 'applicant:'.$booking->applicant_email;
         } catch (\Throwable $e) {
             report($e);
         }
+
+        // Admins plus the lab staff assigned to this lab type — see
+        // User::scopeBookingTicketRecipients() for who's left out and why.
+        // Each send is isolated: one unreachable or malformed address must not
+        // stop the rest of the team being told about the booking.
+        foreach (User::bookingTicketRecipientEmails($booking->lab_type) as $adminEmail) {
+            try {
+                Mail::to($adminEmail)->send(new NewBookingTicket($booking));
+                $accepted[] = 'staff:'.$adminEmail;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        // Recorded so "who was actually emailed about this booking?" is
+        // answerable afterwards. Handing a message to the SMTP server is not
+        // the same as it reaching an inbox — spam filtering happens after
+        // this point — but it separates "the app never sent it" from
+        // "it was sent and filtered", which is otherwise guesswork.
+        Log::info('Booking '.$booking->ref.' ('.$booking->lab_type.') mail accepted by SMTP for: '
+            .(implode(', ', $accepted) ?: 'nobody'));
     }
 
     /**

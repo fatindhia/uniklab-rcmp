@@ -74,6 +74,9 @@
     const BM_CANCEL_URL = @json(route('admin.bookings.cancel', ['booking' => '__REF__']));
     const BM_CSRF = @json(csrf_token());
     const BM_LABS_BY_TYPE = window.ADMIN_LABS_BY_TYPE || {};
+    // Read from the controller constant so the hint text, the client-side check
+    // and the server rule can't drift apart.
+    const BM_MIN_CHARS = @json(\App\Http\Controllers\Admin\BookingController::MIN_EXPLANATION_CHARS);
 
     function bmEsc(s) {
         return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -176,7 +179,7 @@
                 </div>
                 <div id="bmRoomPicker" class="bm-room-picker"><div class="muted" style="font-size:.8rem;">Checking room availability…</div></div>
                 <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-                    <button type="button" id="bmReassignBtn" class="button button-secondary" onclick="submitReassign('${ref}')" disabled>Reassign</button>
+                    <button type="button" id="bmReassignBtn" class="button button-accent" onclick="submitReassign('${ref}')" disabled>🔄 Reassign</button>
                     <span class="muted" id="bmRoomPickerCount" style="font-size:.76rem;"></span>
                 </div>
                 <div id="bmReassignMsg" style="display:none; margin-top:8px; font-size:.8rem;"></div>
@@ -186,7 +189,8 @@
         if (data.status === 'pending') {
             admin += `<label class="bm-block-label" for="bmRemark">Decision remark (required)</label>
                 <textarea id="bmRemark" rows="3" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); font-family:inherit;" placeholder="Reason / notes shown to the applicant…"></textarea>
-                <div class="muted" style="font-size:.76rem; margin-top:6px;">Write a remark, then use Approve / Reject below.</div>`;
+                <div class="muted" style="font-size:.76rem; margin-top:6px;">Write a remark of at least ${BM_MIN_CHARS} characters, then use Approve / Reject below.</div>
+                <div id="bmRemarkMsg" style="display:none; margin-top:6px; font-size:.78rem; color:#c0392b;"></div>`;
         } else {
             admin += data.admin_remark
                 ? `<div class="bm-block-label">Remark</div><div class="bm-text">${bmEsc(data.admin_remark)}</div>`
@@ -198,8 +202,9 @@
 
         if (data.status !== 'cancelled') {
             admin += `<div id="bmCancelSection" style="display:none; margin-top:18px; padding-top:16px; border-top:1px solid var(--line);">
-                <div class="bm-subcard-title" style="color:#c0392b;">Cancel Booking — Reason (required)</div>
+                <div class="bm-subcard-title" style="color:#c0392b;">Cancel Booking — Reason (required, min ${BM_MIN_CHARS} characters)</div>
                 <textarea id="bmCancelReason" rows="2" style="width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--line); font-family:inherit;" placeholder="Why is this booking being cancelled?"></textarea>
+                <div id="bmCancelMsg" style="display:none; margin-top:6px; font-size:.78rem; color:#c0392b;"></div>
                 <div style="margin-top:8px; display:flex; justify-content:flex-end;">
                     <button type="button" class="button button-danger" onclick="submitCancel('${ref}')">Confirm Cancel</button>
                 </div>
@@ -279,12 +284,28 @@
         form.submit();
     }
 
+    // Mirrors BookingController::explanationRule() so the admin is told what's
+    // wrong here instead of the server bouncing them back to a rebuilt modal
+    // with the message lost. The server rule is still the authority.
+    function bmTooShort(text) {
+        return String(text || '').trim().length < BM_MIN_CHARS;
+    }
+
+    function bmShowFieldMsg(id, message) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = message;
+        el.style.display = message ? '' : 'none';
+    }
+
     function submitDecision(ref, status) {
         const remark = document.getElementById('bmRemark')?.value?.trim();
-        if (!remark) {
+        if (bmTooShort(remark)) {
+            bmShowFieldMsg('bmRemarkMsg', `Please write at least ${BM_MIN_CHARS} characters explaining the decision.`);
             document.getElementById('bmRemark')?.focus();
             return;
         }
+        bmShowFieldMsg('bmRemarkMsg', '');
         bmSubmitForm(BM_UPDATE_URL.replace('__REF__', ref), { status, admin_remark: remark });
     }
 
@@ -394,7 +415,7 @@
             })
             .catch((err) => {
                 setMsg(err.message || 'Reassign failed.', true);
-                if (btn) { btn.disabled = false; btn.textContent = 'Reassign'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Reassign'; }
             });
     }
 
@@ -409,10 +430,12 @@
 
     function submitCancel(ref) {
         const reason = document.getElementById('bmCancelReason')?.value?.trim();
-        if (!reason) {
+        if (bmTooShort(reason)) {
+            bmShowFieldMsg('bmCancelMsg', `Please give at least ${BM_MIN_CHARS} characters explaining the cancellation.`);
             document.getElementById('bmCancelReason')?.focus();
             return;
         }
+        bmShowFieldMsg('bmCancelMsg', '');
         bmSubmitForm(BM_CANCEL_URL.replace('__REF__', ref), { reason });
     }
 </script>

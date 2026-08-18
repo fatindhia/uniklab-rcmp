@@ -14,7 +14,12 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    // Laravel defaults this to 'log', which turns a missing MAIL_MAILER into
+    // silently discarded mail — booking notifications sat in laravel.log for days
+    // looking like successful sends. Failing to connect is the louder, better
+    // failure.
+
+    'default' => env('MAIL_MAILER', 'smtp'),
 
     /*
     |--------------------------------------------------------------------------

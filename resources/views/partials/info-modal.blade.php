@@ -399,11 +399,15 @@
             }
         };
 
+        function markSeen() {
+            try { sessionStorage.setItem(SEEN_KEY, '1'); } catch (e) { /* private mode — just don't remember */ }
+        }
+
         window.closeInfoModal = function () {
             if (locked) return;
             overlay.classList.remove('is-visible');
             document.body.style.overflow = '';
-            try { sessionStorage.setItem(SEEN_KEY, '1'); } catch (e) { /* private mode — just don't remember */ }
+            markSeen();
             // wait out the exit transition before pulling it from the flow
             setTimeout(() => overlay.classList.remove('is-open'), 300);
         };
@@ -422,6 +426,12 @@
         try { seen = sessionStorage.getItem(SEEN_KEY) === '1'; } catch (e) { seen = false; }
 
         if (!seen) {
+            // Marked as soon as it opens, not on close. The popup's own
+            // "Book a Lab" button is an ordinary link, so leaving the page that
+            // way never reaches closeInfoModal() — and the next page would then
+            // start the countdown all over again. Recording it here means the
+            // lock runs once per session however the visitor leaves.
+            markSeen();
             setTimeout(() => window.openInfoModal(LOCK_SECONDS), 450);
         }
     })();

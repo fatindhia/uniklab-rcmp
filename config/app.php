@@ -65,7 +65,11 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Bookings are made and read in Malaysian local time, and the rules that
+    // reject a past date or an already-passed slot compare against now() — on
+    // UTC those were 8 hours out, so a slot that finished hours ago still
+    // looked like it was in the future.
+    'timezone' => env('APP_TIMEZONE', 'Asia/Kuala_Lumpur'),
 
     /*
     |--------------------------------------------------------------------------

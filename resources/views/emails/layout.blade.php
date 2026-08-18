@@ -21,6 +21,13 @@
     .row { padding:6px 0; font-size:0.92rem; }
     .row .lbl { display:inline-block; min-width:140px; color:#7a6d60; font-weight:600; }
     .row .val { font-weight:700; color:#221d1e; }
+    .rooms { border-top:1px solid rgba(49,43,44,0.13); margin-top:18px; padding-top:16px; }
+    .rooms-head { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:#94806f; font-weight:700; margin-bottom:10px; }
+    .room { padding:10px 0 10px 12px; border-left:2px solid rgba(148,128,111,0.35); margin-bottom:8px; }
+    .room-name { font-weight:700; color:#221d1e; font-size:0.92rem; }
+    .tag { display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px; background:rgba(74,95,98,0.12); color:#4a5f62; font-size:0.68rem; font-weight:700; letter-spacing:0.02em; }
+    .equip { color:#5c5250; font-size:0.88rem; line-height:1.5; margin-top:4px; }
+    .equip--none { color:#9a8f86; font-style:italic; }
     .note { margin-top:22px; padding:14px 16px; border-left:3px solid #94806f; background:rgba(148,128,111,0.07); border-radius:8px; font-size:0.9rem; line-height:1.55; white-space:pre-line; }
     .btn { display:inline-block; margin-top:26px; padding:12px 22px; background:#4a5f62; color:#ffffff !important; text-decoration:none; border-radius:10px; font-weight:700; font-size:0.9rem; }
     .footer { max-width:600px; margin:22px auto 0; text-align:center; color:#7a6d60; font-size:0.78rem; }

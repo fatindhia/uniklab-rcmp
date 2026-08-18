@@ -5,6 +5,11 @@
         .af-field { display: grid; gap: 5px; }
         .af-field span.lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
         .af-field input, .af-field select, .af-field textarea {
+            /* width/min-width/box-sizing are what keep a control inside its grid
+               cell: without them an input keeps its intrinsic width (~180px, more
+               for a select with long options) and bursts out of the card once the
+               column is narrower than that. */
+            width: 100%; min-width: 0; box-sizing: border-box;
             min-height: 42px; padding: 0 12px; border-radius: var(--radius-sm); border: 1.5px solid var(--line);
             font-family: inherit; font-size: .9rem; color: var(--ink); background: var(--bg);
             transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
@@ -15,6 +20,11 @@
         .af-check { display: flex; align-items: center; gap: 9px; font-size: .86rem; cursor: pointer; }
         .af-check input { width: 18px; height: 18px; accent-color: var(--brand); flex-shrink: 0; }
         .af-modal-form-grid { padding: 20px; display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0,1fr)); }
+        /* Equipment rows: was inline on the element, moved here so the columns can
+           stack on a phone — three columns in a ~270px card is unusable. */
+        .eq-row { display: grid; grid-template-columns: 1.2fr 1fr auto; gap: 8px; align-items: center; }
+        .eq-row input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 38px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); font-family: inherit; }
+        .eq-row .button { min-height: 38px; padding: 0 11px; }
         .af-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--line); }
         .af-modal-head h3 { margin: 0; font-size: 1.02rem; }
         .af-modal-close { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 999px; }
@@ -77,6 +87,25 @@
         }
         .lab-empty { padding: 44px 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); margin-top: 18px; }
         .lab-empty .big { font-size: 1.8rem; display: block; margin-bottom: 8px; }
+        /* Below 16px, iOS Safari zooms the page in on focus and never zooms
+           back out. This page sets its own control size, and its <style>
+           block loads after admin.css, so the override has to live here. */
+        @media (max-width: 640px) {
+            /* Two columns leave each field ~120px on a 375px screen, which is too
+               narrow to read a room name or a select's chosen option. One field
+               per row instead. */
+            .af-modal-form-grid { grid-template-columns: 1fr; padding: 16px; }
+            /* Name + remove button on the first row, note spanning underneath.
+               Placed explicitly: leaving it to auto-placement collapsed the
+               "auto" track to 0 and stretched the button across the full width. */
+            .eq-row { grid-template-columns: 1fr auto; }
+            .eq-row input:nth-of-type(1) { grid-column: 1; grid-row: 1; }
+            .eq-row .button { grid-column: 2; grid-row: 1; }
+            .eq-row input:nth-of-type(2) { grid-column: 1 / -1; grid-row: 2; }
+        }
+        @media (max-width: 900px) {
+            .af-field input, .af-field select, .af-field textarea, .labs-search input { font-size: 16px; }
+        }
     </style>
 
     <section class="kpi-grid">
@@ -158,7 +187,7 @@
                             <span class="lr-status lr-status--{{ $lab->status }}">{{ ucfirst($lab->status) }}</span>
                             <div class="lr-actions">
                                 <button type="button" class="lr-btn" title="Edit {{ $lab->name }}" onclick="openLabModal({{ $labJson }})">✏️</button>
-                                <form method="POST" action="{{ route('admin.labs.destroy', $lab) }}" onsubmit="return confirm('Remove “{{ $lab->name }}”?');">
+                                <form method="POST" action="{{ route('admin.labs.destroy', $lab) }}" onsubmit="return confirmDeleteLab(this, @js($lab->name));">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="lr-btn lr-btn--danger" title="Remove {{ $lab->name }}">✕</button>
@@ -346,11 +375,10 @@
             const list = document.getElementById('lab-equipment-list');
             const row = document.createElement('div');
             row.className = 'eq-row';
-            row.style.cssText = 'display:grid; grid-template-columns:1.2fr 1fr auto; gap:8px; align-items:center;';
             row.innerHTML = `
-                <input name="equipment_names[]" placeholder="Equipment name" value="${eqEsc(name)}" style="min-height:38px; padding:0 10px; border-radius:9px; border:1px solid var(--line);">
-                <input name="equipment_notes[]" placeholder="Special note (optional)" value="${eqEsc(note)}" style="min-height:38px; padding:0 10px; border-radius:9px; border:1px solid var(--line);">
-                <button type="button" onclick="removeEquipmentRow(this)" class="button button-danger" style="min-height:38px; padding:0 11px;" title="Remove item">✕</button>`;
+                <input name="equipment_names[]" placeholder="Equipment name" value="${eqEsc(name)}">
+                <input name="equipment_notes[]" placeholder="Special note (optional)" value="${eqEsc(note)}">
+                <button type="button" onclick="removeEquipmentRow(this)" class="button button-danger" title="Remove item">✕</button>`;
             list.appendChild(row);
             updateEquipmentEmpty();
             if (!name) row.querySelector('input')?.focus();
@@ -375,6 +403,26 @@
             if (!e || e.target === document.getElementById('labModalOverlay')) {
                 document.getElementById('labModalOverlay').classList.remove('open');
             }
+        }
+
+        // confirmAction() is async, so the submit has to be blocked first and
+        // replayed once the dialog resolves. The flag stops the second submit
+        // re-entering this and asking again.
+        function confirmDeleteLab(form, labName) {
+            if (form.dataset.confirmed === '1') return true;
+
+            confirmAction({
+                title: 'Remove this lab?',
+                text: labName + ' will be removed from the booking system.',
+                confirmText: 'Remove',
+                danger: true,
+            }).then(function (ok) {
+                if (!ok) return;
+                form.dataset.confirmed = '1';
+                form.submit();
+            });
+
+            return false;
         }
     </script>
 @endsection
