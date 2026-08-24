@@ -415,14 +415,14 @@
                                  night. Only R&D equipment runs unattended, so only
                                  R&D is offered the choice. --}}
                             <div id="span-mode-field" style="{{ old('booking_date_to') ? '' : 'display:none;' }} margin-top:12px;">
-                                <span class="muted" style="display:block; margin-bottom:6px;">How should these dates be read?<span class="req">*</span></span>
+                                <span class="muted" style="display:block; margin-bottom:6px;">Schedule type:</span>
                                 <label class="toggle-card" style="margin-bottom:8px;">
                                     <input type="radio" name="is_continuous" value="1" @checked(old('is_continuous'))>
-                                    <span><strong>Continuous run</strong> — Equipment runs continuously from start to end time, including overnight.</span>
+                                    <span><strong>Continuous run</strong> — Equipment runs continuously from the start time until the end time, including overnight.</span>
                                 </label>
                                 <label class="toggle-card">
                                     <input type="radio" name="is_continuous" value="0" @checked(! old('is_continuous'))>
-                                    <span><strong>Same time each day</strong> — a separate session in the same time slot on every date in the range.</span>
+                                    <span><strong>Same time each day</strong> — Equipment is booked separately at the same time on each date.</span>
                                 </label>
                             </div>
                         @endif
