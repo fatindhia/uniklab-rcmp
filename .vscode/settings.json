@@ -1,4 +1,8 @@
 {
+    // Laravel Extra IntelliSense jalankan PHP dalam container (tiada PHP di host).
     "LaravelExtraIntellisense.phpCommand": "docker exec -i -w /var/www/html/uniklab-rcmp rcmp_web_server php -r \"{code}\"",
-    "LaravelExtraIntellisense.basePathForCode": "/var/www/html/uniklab-rcmp"
+    "LaravelExtraIntellisense.basePathForCode": "/var/www/html/uniklab-rcmp",
+
+    // Padan dengan config.platform.php dalam composer.json & container rcmp_web_server.
+    "intelephense.environment.phpVersion": "8.3.33"
 }

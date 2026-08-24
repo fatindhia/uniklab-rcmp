@@ -65,7 +65,7 @@
                         <td><span class="rb-type"><span class="type-dot type-dot--{{ $booking->lab_type }}"></span>{{ ucfirst($booking->lab_type) }}</span></td>
                     @endif
                     <td>{{ $booking->date_range_label }}</td>
-                    <td>{{ $booking->start_time->format('H:i') }} - {{ $booking->end_time->format('H:i') }}</td>
+                    <td>{{ $booking->time_range_label }}</td>
                     <td>{{ $booking->rooms->map(fn ($r) => $r->lab?->name)->filter()->implode(', ') ?: '—' }}</td>
                     <td><span class="badge badge-{{ $booking->status }}">{{ ucfirst($booking->status) }}</span></td>
                     <td>
@@ -94,7 +94,7 @@
                     <span><span class="type-dot type-dot--{{ $booking->lab_type }}"></span> <strong>{{ ucfirst($booking->lab_type) }}</strong></span>
                 @endif
                 <span><strong>Date:</strong> {{ $booking->date_range_label }}</span>
-                <span><strong>Time:</strong> {{ $booking->start_time->format('H:i') }} - {{ $booking->end_time->format('H:i') }}</span>
+                <span><strong>Time:</strong> {{ $booking->time_range_label }}</span>
                 <span><strong>Rooms:</strong> {{ $booking->rooms->map(fn ($r) => $r->lab?->name)->filter()->implode(', ') ?: '—' }}</span>
             </div>
             <div class="rb-card-foot">

@@ -70,7 +70,7 @@
                         <div class="detail-row"><span class="lbl">Lab type</span><span class="val">{{ ucfirst($booking->lab_type) }}</span></div>
                         <div class="detail-row"><span class="lbl">Building</span><span class="val">{{ $booking->rooms->firstWhere('is_primary', true)?->lab?->building ?? '—' }}</span></div>
                         <div class="detail-row"><span class="lbl">Date</span><span class="val">{{ $booking->date_range_label }}</span></div>
-                        <div class="detail-row"><span class="lbl">Time</span><span class="val">{{ \Illuminate\Support\Carbon::parse($booking->start_time)->format('H:i') }} – {{ \Illuminate\Support\Carbon::parse($booking->end_time)->format('H:i') }}</span></div>
+                        <div class="detail-row"><span class="lbl">Time</span><span class="val">{{ $booking->time_range_label }}</span></div>
                         @if ($booking->lab_type === 'csl' && $booking->csl_session_type)
                             <div class="detail-row"><span class="lbl">Session type</span><span class="val">{{ $booking->csl_session_type }}</span></div>
                         @endif

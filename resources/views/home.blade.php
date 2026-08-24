@@ -1178,9 +1178,14 @@
                         + `</div></div>`;
                 });
                 bookings.forEach(b => {
+                    // A continuous run is sliced at midnight server-side, so the
+                    // times here are already this day's share of it (12:30–24:00
+                    // on the first day, 00:00–12:30 on the last) — the note just
+                    // says why a booking appears to run to the end of the day.
+                    const times = `${b.start}–${b.end}` + (b.continuous ? ' · continuous run' : '');
                     html += `<div class="pc-item"><span class="pc-dot pc-dot--${b.status === 'pending' ? 'pending' : esc(b.type)}"></span><div class="pc-item-lines">`
                         + line(b.rooms || b.type, 'pc-item-room')
-                        + line(`${b.start}–${b.end}`, 'pc-item-meta')
+                        + line(times, 'pc-item-meta')
                         + line(b.subject, 'pc-item-meta')
                         + `<span class="pc-status pc-status--${esc(b.status)}">${esc(b.status)}</span>`
                         + `</div></div>`;

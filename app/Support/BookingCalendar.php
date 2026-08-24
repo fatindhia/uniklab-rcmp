@@ -58,7 +58,7 @@ class BookingCalendar
         // decision) and approved (confirmed). Rejected/cancelled ones are not
         // real occupancy, so they never appear on any calendar.
         $bookings = Booking::query()
-            ->select(['id', 'ref', 'applicant_name', 'purpose', 'lab_type', 'status', 'booking_date_from', 'booking_date_to', 'start_time', 'end_time'])
+            ->select(['id', 'ref', 'applicant_name', 'purpose', 'lab_type', 'status', 'booking_date_from', 'booking_date_to', 'start_time', 'end_time', 'is_continuous'])
             ->with('rooms.lab:id,name')
             ->whereIn('status', ['pending', 'approved'])
             ->when($labType, fn ($q) => $q->where('lab_type', $labType))
@@ -78,7 +78,11 @@ class BookingCalendar
 
             // Multi-day (extended) bookings occupy every day in their range, so
             // they appear on each of those days in the calendar — not just day
-            // one. The guard caps runaway loops from malformed data.
+            // one. A daily booking shows the same window on every day; a
+            // continuous run is sliced at midnight instead, so day one reads
+            // 12:30–24:00 and the final day 00:00–12:30, which is what makes
+            // an overnight run visibly occupy the night. BookingSpan caps the
+            // expansion against runaway data.
             $to = $booking->booking_date_to && $booking->booking_date_to->gte($from)
                 ? $booking->booking_date_to
                 : $from;
@@ -89,13 +93,23 @@ class BookingCalendar
                 'subject' => $booking->purpose,
                 'type' => $booking->lab_type,
                 'status' => $booking->status,
-                'start' => $booking->start_time->format('H:i'),
-                'end' => $booking->end_time->format('H:i'),
+                'continuous' => (bool) $booking->is_continuous,
                 'rooms' => $booking->rooms->map(fn ($r) => $r->lab?->name)->filter()->implode(', '),
             ];
 
-            for ($day = $from->copy(), $guard = 0; $day->lte($to) && $guard < 366; $day->addDay(), $guard++) {
-                $events[$day->format('Y-m-d')]['bookings'][] = $event;
+            $slices = BookingSpan::daySlices(
+                $from->format('Y-m-d'),
+                $to->format('Y-m-d'),
+                $booking->start_time->format('H:i'),
+                $booking->end_time->format('H:i'),
+                (bool) $booking->is_continuous,
+            );
+
+            foreach ($slices as $slice) {
+                $events[$slice['date']]['bookings'][] = $event + [
+                    'start' => $slice['start'],
+                    'end' => $slice['end'],
+                ];
             }
         }
 

@@ -31,6 +31,11 @@ class BookingModalPayload
             'date' => $booking->date_range_label,
             'start' => optional($booking->start_time)->format('H:i'),
             'end' => optional($booking->end_time)->format('H:i'),
+            // The two above are the raw clock values; this is what they
+            // actually mean once the booking's span is taken into account —
+            // "Continuous run · 24h" rather than a window that repeats.
+            'time_label' => $booking->time_range_label,
+            'is_continuous' => (bool) $booking->is_continuous,
             'building' => $primaryRoom?->lab?->building,
             'purpose' => $booking->purpose,
             'applicant_remark' => $booking->applicant_remark,

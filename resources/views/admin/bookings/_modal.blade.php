@@ -118,7 +118,7 @@
             bmField('Lab type', typeLabel),
             bmField('Building', data.building),
             bmField('Date', data.date),
-            bmField('Time', `${data.start || '—'} – ${data.end || '—'}`),
+            bmField('Time', data.time_label || `${data.start || '—'} – ${data.end || '—'}`),
         ];
         if (data.lab_type === 'research') {
             if (data.research_pax) schedule.push(bmField('Pax', data.research_pax));
@@ -175,7 +175,7 @@
             admin += `<div class="bm-subcard">
                 <div class="bm-subcard-title">Reassign Room(s)</div>
                 <div class="muted" style="font-size:.76rem; margin-bottom:8px;">
-                    Availability is checked against ${bmEsc(data.date || 'this date')}, ${bmEsc(data.start || '')}–${bmEsc(data.end || '')}. Tick one or more available rooms.
+                    Availability is checked against ${bmEsc(data.date || 'this date')}${data.is_continuous ? ' (continuous run)' : `, ${bmEsc(data.start || '')}–${bmEsc(data.end || '')}`}. Tick one or more available rooms.
                 </div>
                 <div id="bmRoomPicker" class="bm-room-picker"><div class="muted" style="font-size:.8rem;">Checking room availability…</div></div>
                 <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">

@@ -383,6 +383,15 @@
                             for ($m = $startMinutes; $m <= $endMinutes; $m += 30) {
                                 $timeSlots[] = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
                             }
+
+                            // A continuous run finishes whenever the equipment is
+                            // done — 02:00, 23:30 — so its End time needs the whole
+                            // clock, not just the hours somebody has to be present
+                            // for. The JS swaps the End select between the two lists.
+                            $allDaySlots = [];
+                            for ($m = 0; $m < 24 * 60; $m += 30) {
+                                $allDaySlots[] = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+                            }
                         @endphp
                         <div class="grid-3" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px;">
                             {{-- min stops the native picker offering past dates at all;
@@ -397,6 +406,26 @@
                                 <input type="date" name="booking_date_to" id="booking-date-to" min="{{ today()->toDateString() }}" value="{{ old('booking_date_to') }}">
                             </div>
                         </div>
+                        @if ($type === 'equipment')
+                            {{-- Two dates can mean two very different things. Until
+                                 this choice existed the system only understood the
+                                 second one, so a request to run equipment from Thu
+                                 noon to Fri noon was silently stored as a one-hour
+                                 slot on each of the two days — no error, no reserved
+                                 night. Only R&D equipment runs unattended, so only
+                                 R&D is offered the choice. --}}
+                            <div id="span-mode-field" style="{{ old('booking_date_to') ? '' : 'display:none;' }} margin-top:12px;">
+                                <span class="muted" style="display:block; margin-bottom:6px;">How should these dates be read?<span class="req">*</span></span>
+                                <label class="toggle-card" style="margin-bottom:8px;">
+                                    <input type="radio" name="is_continuous" value="1" @checked(old('is_continuous'))>
+                                    <span><strong>Continuous run</strong> — Equipment runs continuously from start to end time, including overnight.</span>
+                                </label>
+                                <label class="toggle-card">
+                                    <input type="radio" name="is_continuous" value="0" @checked(! old('is_continuous'))>
+                                    <span><strong>Same time each day</strong> — a separate session in the same time slot on every date in the range.</span>
+                                </label>
+                            </div>
+                        @endif
                         <div class="grid-3" style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:12px;">
                             <label class="field">
                                 <span class="muted">Start time<span class="req">*</span></span>
@@ -409,7 +438,9 @@
                             </label>
                             <label class="field">
                                 <span class="muted">End time<span class="req">*</span></span>
-                                <select name="end_time" required>
+                                <select name="end_time" id="end-time-select" required
+                                    data-slots="{{ implode(',', $timeSlots) }}"
+                                    @if ($type === 'equipment') data-slots-continuous="{{ implode(',', $allDaySlots) }}" @endif>
                                     <option value="">— Select —</option>
                                     @foreach ($timeSlots as $slot)
                                         <option value="{{ $slot }}" @selected(old('end_time') === $slot)>{{ $slot }}</option>
@@ -679,17 +710,17 @@
                                 <input type="text" name="applicant_id" value="{{ old('applicant_id') }}" required>
                             </label>
                             <label class="field">
-                                <span class="muted">Phone number</span>
+                                <span class="muted">Phone number<span class="req">*</span></span>
                                 <input type="text" name="applicant_phone" value="{{ old('applicant_phone') }}"
                                        {{-- maxlength leaves room for separators in a pasted number; the
                                             input handler below strips them and caps the result at 11 digits. --}}
                                        inputmode="numeric" pattern="[0-9]{10,11}" minlength="10" maxlength="20"
                                        placeholder="e.g. 01114354678"
-                                       title="Digits only, 10 or 11 numbers (e.g. 01114354678)">
+                                       title="Digits only, 10 or 11 numbers (e.g. 01114354678)" required>
                             </label>
                             <label class="field">
-                                <span class="muted">Department / Programme</span>
-                                <input type="text" name="applicant_department" value="{{ old('applicant_department') }}">
+                                <span class="muted">Department / Programme<span class="req">*</span></span>
+                                <input type="text" name="applicant_department" value="{{ old('applicant_department') }}" required>
                             </label>
                             <label class="field">
                                 <span class="muted">Role<span class="req">*</span></span>
@@ -715,8 +746,8 @@
                             </label>
                             @if ($type === 'csl')
                                 <label class="field">
-                                    <span class="muted">Group</span>
-                                    <input type="text" name="applicant_group" maxlength="30" value="{{ old('applicant_group') }}" placeholder="e.g. 4A">
+                                    <span class="muted">Group<span class="req">*</span></span>
+                                    <input type="text" name="applicant_group" maxlength="30" value="{{ old('applicant_group') }}" placeholder="e.g. 4A" required>
                                 </label>
                             @endif
                         </div>
@@ -1167,7 +1198,7 @@
                     const res = await fetch(@json(route('booking.equipment-availability')), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
-                        body: JSON.stringify({ booking_date_from: dateFrom, booking_date_to: textVal('booking_date_to') || dateFrom, start_time: startTime, end_time: endTime }),
+                        body: JSON.stringify({ booking_date_from: dateFrom, booking_date_to: textVal('booking_date_to') || dateFrom, start_time: startTime, end_time: endTime, is_continuous: isContinuous() }),
                     });
                     const json = await res.json();
                     const byLabId = new Map((json.labs || []).map((lab) => [String(lab.lab_id), lab]));
@@ -1288,6 +1319,18 @@
                 tcCheck.addEventListener('change', () => { gate.disabled = !tcCheck.checked; });
             }
 
+            // The two readings of an extended booking (see the radio in the
+            // Schedule section). "Continuous" is only real for R&D equipment
+            // over an actual date range — the server applies exactly the same
+            // three conditions in BookingController::store().
+            function isContinuous() {
+                if (bookingType !== 'equipment') return false;
+                const picked = form.querySelector('input[name="is_continuous"]:checked');
+                if (!picked || picked.value !== '1') return false;
+                const from = textVal('booking_date_from'), to = textVal('booking_date_to');
+                return Boolean(from && to && to > from);
+            }
+
             // Schedule: "Date to" only matters for multi-day bookings — keep it
             // hidden (and cleared, so a stale value can't submit) until asked for.
             // Note: only the initial display sync runs immediately here; the
@@ -1297,15 +1340,54 @@
             // are still in their temporal dead zone during this first pass).
             const multiDayToggle = document.getElementById('multi-day-toggle');
             const dateToField = document.getElementById('date-to-field');
+            const spanModeField = document.getElementById('span-mode-field');
             if (multiDayToggle && dateToField) {
-                dateToField.style.display = multiDayToggle.checked ? 'block' : 'none';
-                multiDayToggle.addEventListener('change', () => {
+                const syncSpanFields = () => {
                     dateToField.style.display = multiDayToggle.checked ? 'block' : 'none';
-                    if (!multiDayToggle.checked) form.elements['booking_date_to'].value = '';
+                    if (spanModeField) spanModeField.style.display = multiDayToggle.checked ? 'block' : 'none';
+                };
+                syncSpanFields();
+                multiDayToggle.addEventListener('change', () => {
+                    syncSpanFields();
+                    if (!multiDayToggle.checked) {
+                        form.elements['booking_date_to'].value = '';
+                        // A single-day booking is never continuous — leaving the
+                        // radio set would submit a flag the dates contradict.
+                        const daily = form.querySelector('input[name="is_continuous"][value="0"]');
+                        if (daily) daily.checked = true;
+                    }
+                    syncSpanMode();
                     scheduleAvailabilityCheck();
                     scheduleEquipmentAvailabilityFetch();
                 });
             }
+
+            // Switching mode changes which End times are offered, the duration
+            // reading, and which operating-hours rules apply — so everything
+            // that depends on it is refreshed from one place.
+            const endTimeSelect = document.getElementById('end-time-select');
+            function syncSpanMode() {
+                if (endTimeSelect && endTimeSelect.dataset.slotsContinuous) {
+                    const wanted = isContinuous() ? endTimeSelect.dataset.slotsContinuous : endTimeSelect.dataset.slots;
+                    if (endTimeSelect.dataset.activeSlots !== wanted) {
+                        const previous = endTimeSelect.value;
+                        endTimeSelect.dataset.activeSlots = wanted;
+                        endTimeSelect.innerHTML = '<option value="">— Select —</option>'
+                            + wanted.split(',').map((slot) => '<option value="' + slot + '">' + slot + '</option>').join('');
+                        // Keep the chosen time if the new list still offers it.
+                        endTimeSelect.value = wanted.split(',').includes(previous) ? previous : '';
+                    }
+                }
+                updateDuration();
+                renderScheduleAlert();
+            }
+            form.querySelectorAll('input[name="is_continuous"]').forEach((radio) => {
+                radio.addEventListener('change', () => {
+                    syncSpanMode();
+                    scheduleAvailabilityCheck();
+                    scheduleEquipmentAvailabilityFetch();
+                });
+            });
 
             // Past date/time can't be selected in the first place. The server
             // re-checks all of this in BookingController::store() — this only
@@ -1327,7 +1409,11 @@
                 function syncTimeOptions() {
                     const isToday = dateFrom.value === TODAY;
                     const cutoff = nowHm();
-                    [startSel, endSel].forEach((sel) => {
+                    // A continuous run's end time is on a LATER date, so an
+                    // early clock time there hasn't "already passed" — only the
+                    // start is bounded by what's left of today.
+                    const selects = isContinuous() ? [startSel] : [startSel, endSel];
+                    selects.forEach((sel) => {
                         if (!sel) return;
                         Array.from(sel.options).forEach((opt) => {
                             if (!opt.value) return;
@@ -1347,7 +1433,8 @@
                     if (dateTo.value && dateTo.value < dateTo.min) dateTo.value = dateFrom.value;
                 }
 
-                dateFrom.addEventListener('change', () => { syncDateTo(); syncTimeOptions(); });
+                dateFrom.addEventListener('change', () => { syncDateTo(); syncTimeOptions(); syncSpanMode(); });
+                dateTo?.addEventListener('change', () => { syncTimeOptions(); syncSpanMode(); });
                 startSel?.addEventListener('change', syncTimeOptions);
                 syncDateTo();
                 syncTimeOptions();
@@ -1397,14 +1484,25 @@
                 const endTime = textVal('end_time');
                 if (!dateFrom || !startTime || !endTime) return [];
 
-                if (endTime <= startTime) return ['End time must be after start time.'];
+                const continuous = isContinuous();
+
+                // A continuous run legitimately ends at an earlier clock time on
+                // a later date (20 Aug 12:30 → 21 Aug 12:30), so comparing the
+                // two times only means something for a same-day booking.
+                if (!continuous && endTime <= startTime) return ['End time must be after start time.'];
 
                 const day = new Date(dateFrom + 'T00:00:00').getDay();
                 const isWeekend = day === 0 || day === 6;
                 const messages = [];
 
                 if (bookingType === 'equipment') {
-                    if (startTime < hoursRules.weekday_start || endTime > hoursRules.weekday_end) {
+                    if (continuous) {
+                        // Somebody has to be in the building to set the run
+                        // going; nobody has to be there when it finishes.
+                        if (startTime < hoursRules.weekday_start || startTime > hoursRules.weekday_end) {
+                            messages.push('A continuous run has to start within Research & Development lab hours (' + hoursRules.weekday_start + '–' + hoursRules.weekday_end + ') — it can finish at any time.');
+                        }
+                    } else if (startTime < hoursRules.weekday_start || endTime > hoursRules.weekday_end) {
                         messages.push('Research & Development lab hours are ' + hoursRules.weekday_start + '–' + hoursRules.weekday_end + '.');
                     }
                 } else if (bookingType === 'pharma') {
@@ -1461,6 +1559,7 @@
                     booking_date_to: textVal('booking_date_to') || dateFrom,
                     start_time: startTime,
                     end_time: endTime,
+                    is_continuous: isContinuous(),
                     lab_ids: selectedLabIds(),
                     equipment_names: Array.from(form.querySelectorAll('input[name="equipment_names[]"]:checked')).map((el) => el.value),
                 };
@@ -1630,8 +1729,17 @@
                 const fmtDMY = (iso) => { const p = String(iso).split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; };
                 const dateFrom = textVal('booking_date_from');
                 const dateTo = textVal('booking_date_to');
-                setReview('dates', (dateTo && dateTo !== dateFrom) ? (fmtDMY(dateFrom) + ' to ' + fmtDMY(dateTo)) : fmtDMY(dateFrom));
-                setReview('times', textVal('start_time') + ' – ' + textVal('end_time'));
+                const start = textVal('start_time'), end = textVal('end_time');
+                if (isContinuous()) {
+                    // One unbroken span, so the dates and times only make sense
+                    // read together — splitting them across two rows is what let
+                    // a 24-hour run look like an hour.
+                    setReview('dates', fmtDMY(dateFrom) + ' ' + start + ' → ' + fmtDMY(dateTo) + ' ' + end);
+                    setReview('times', 'Continuous run · ' + (durationDisplay?.value || ''));
+                } else {
+                    setReview('dates', (dateTo && dateTo !== dateFrom) ? (fmtDMY(dateFrom) + ' to ' + fmtDMY(dateTo)) : fmtDMY(dateFrom));
+                    setReview('times', start + ' – ' + end + (isExtendedDaily() ? ' (each day)' : ''));
+                }
 
                 if (bookingType === 'equipment' || bookingType === 'pharma') {
                     // Rooms & Equipment, grouped per room — each selected room
@@ -1793,24 +1901,48 @@
                 submitBtn.textContent = 'Submitting…';
             });
 
-            // Duration: derive a friendly "Xh Ym" label from the selected
-            // start/end time slots (read-only, not submitted).
+            // Duration: derive a friendly "Xh Ym" label from the selection
+            // (read-only, not submitted). This used to read the two time slots
+            // alone and ignore the dates entirely, which is why booking 20 Aug
+            // 12:30 → 21 Aug 12:30 reported "1h" — a 24-hour run shown as a
+            // one-hour one, with nothing to tell the applicant otherwise. A
+            // continuous run is measured between the two full date-times; a
+            // daily one is still one day's window, said out loud as such.
             const durationDisplay = document.getElementById('duration-display');
+            function durationMinutes() {
+                const s = textVal('start_time'), e = textVal('end_time');
+                if (!s || !e) return null;
+                const toMin = (t) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
+                if (!isContinuous()) return toMin(e) - toMin(s);
+                const from = textVal('booking_date_from'), to = textVal('booking_date_to');
+                const days = Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000);
+                return days * 1440 + toMin(e) - toMin(s);
+            }
+            function formatDuration(minutes) {
+                const h = Math.floor(minutes / 60), m = minutes % 60;
+                const label = [h ? h + 'h' : '', m ? m + 'm' : ''].filter(Boolean).join(' ');
+                // Past a couple of days the raw hour count stops being readable,
+                // but hours stay the headline — that's how the labs talk about a
+                // run ("it needs 24 hours").
+                return h >= 48 ? label + ' (' + (Math.round(h / 24 * 10) / 10) + ' days)' : label;
+            }
             function updateDuration() {
                 if (!durationDisplay) return;
-                const s = textVal('start_time'), e = textVal('end_time');
-                const toMin = (t) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
-                if (!s || !e) { durationDisplay.value = '—'; return; }
-                const diff = toMin(e) - toMin(s);
+                const diff = durationMinutes();
+                if (diff === null) { durationDisplay.value = '—'; return; }
                 if (diff <= 0) { durationDisplay.value = 'Invalid range'; return; }
-                const h = Math.floor(diff / 60), m = diff % 60;
-                durationDisplay.value = [h ? h + 'h' : '', m ? m + 'm' : ''].filter(Boolean).join(' ');
+                durationDisplay.value = formatDuration(diff)
+                    + (isContinuous() ? ' continuous' : (isExtendedDaily() ? ' each day' : ''));
             }
-            ['start_time', 'end_time'].forEach((name) => {
+            function isExtendedDaily() {
+                const from = textVal('booking_date_from'), to = textVal('booking_date_to');
+                return Boolean(from && to && to > from) && !isContinuous();
+            }
+            ['start_time', 'end_time', 'booking_date_from', 'booking_date_to'].forEach((name) => {
                 const el = form.elements[name];
                 if (el) el.addEventListener('change', updateDuration);
             });
-            updateDuration();
+            syncSpanMode();
 
             // Run the live checks once on load in case fields are pre-filled
             // (e.g. after a validation-error redirect brings old() values back).
@@ -1873,13 +2005,25 @@
 
                 const dateFrom = form.elements['booking_date_from']?.value || '';
                 const dateTo = form.elements['booking_date_to']?.value || '';
-                ticketDate.textContent = dateFrom
-                    ? (dateTo && dateTo !== dateFrom ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}` : fmtDate(dateFrom))
-                    : '—';
-
                 const start = form.elements['start_time']?.value || '';
                 const end = form.elements['end_time']?.value || '';
-                ticketTime.textContent = start && end ? `${start} – ${end}` : '—';
+
+                // Same mode test the main script uses, re-derived here because
+                // this summary lives in its own scope.
+                const modePicked = form.querySelector('input[name="is_continuous"]:checked');
+                const continuous = Boolean(modePicked && modePicked.value === '1' && dateFrom && dateTo && dateTo > dateFrom);
+
+                if (continuous) {
+                    ticketDate.textContent = dateFrom && start && end
+                        ? `${fmtDate(dateFrom)} ${start} → ${fmtDate(dateTo)} ${end}`
+                        : '—';
+                    ticketTime.textContent = 'Continuous run';
+                } else {
+                    ticketDate.textContent = dateFrom
+                        ? (dateTo && dateTo !== dateFrom ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}` : fmtDate(dateFrom))
+                        : '—';
+                    ticketTime.textContent = start && end ? `${start} – ${end}` : '—';
+                }
 
                 const durationDisplay = document.getElementById('duration-display');
                 ticketDuration.textContent = (durationDisplay && durationDisplay.value && durationDisplay.value !== '—')

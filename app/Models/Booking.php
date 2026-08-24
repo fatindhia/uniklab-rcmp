@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\BookingSpan;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -30,6 +31,7 @@ class Booking extends Model
         'booking_date_to',
         'start_time',
         'end_time',
+        'is_continuous',
         'research_pax',
         'has_special_conditions',
         'csl_session_type',
@@ -56,6 +58,7 @@ class Booking extends Model
             'booking_date_to' => 'date',
             'start_time' => 'datetime:H:i',
             'end_time' => 'datetime:H:i',
+            'is_continuous' => 'boolean',
             'has_special_conditions' => 'boolean',
             'pharma_tc_accepted' => 'boolean',
             'processed_at' => 'datetime',
@@ -71,8 +74,11 @@ class Booking extends Model
     }
 
     /**
-     * Human-readable booking date(s): a single date, or a "from – to" range
-     * for multi-day (extended) bookings.
+     * Human-readable booking date(s): a single date, a "from – to" range for a
+     * multi-day (extended) booking, or — for a continuous run, where the dates
+     * and times are one unbroken span — both ends written out in full, since
+     * "20/08/2026 – 21/08/2026" plus a separate "12:30" row is exactly the
+     * reading that hid a 24-hour booking behind a one-hour label.
      */
     public function getDateRangeLabelAttribute(): string
     {
@@ -84,10 +90,40 @@ class Booking extends Model
         }
 
         if ($to && ! $to->isSameDay($from)) {
+            if ($this->is_continuous) {
+                return $from->format('d/m/Y').' '.BookingSpan::timeLabel($this->start_time)
+                    .' → '.$to->format('d/m/Y').' '.BookingSpan::timeLabel($this->end_time);
+            }
+
             return $from->format('d/m/Y').' – '.$to->format('d/m/Y');
         }
 
         return $from->format('d/m/Y');
+    }
+
+    /**
+     * The time half of the same story. A continuous run has no per-day window
+     * to show — its length is the useful fact — while a multi-day daily
+     * booking says so out loud, so nobody reads two dates and one window as a
+     * single stretch again.
+     */
+    public function getTimeRangeLabelAttribute(): string
+    {
+        if (! $this->start_time || ! $this->end_time) {
+            return '';
+        }
+
+        if ($this->is_continuous) {
+            return 'Continuous run · '.BookingSpan::humanDuration(BookingSpan::totalMinutes(BookingSpan::fromBooking($this)));
+        }
+
+        $label = BookingSpan::timeLabel($this->start_time).' - '.BookingSpan::timeLabel($this->end_time);
+
+        if ($this->booking_date_to && $this->booking_date_from && ! $this->booking_date_to->isSameDay($this->booking_date_from)) {
+            $label .= ' (each day)';
+        }
+
+        return $label;
     }
 
     /**
@@ -102,6 +138,21 @@ class Booking extends Model
         }
 
         return $this->booking_date_from->copy()->setTimeFrom($this->start_time);
+    }
+
+    /**
+     * When the booking actually finishes. For a continuous run that is the end
+     * date's end time; for a daily one it is the last day's window closing.
+     */
+    public function getEndsAtAttribute(): ?\Illuminate\Support\Carbon
+    {
+        if (! $this->end_time) {
+            return null;
+        }
+
+        $lastDay = $this->booking_date_to ?: $this->booking_date_from;
+
+        return $lastDay?->copy()->setTimeFrom($this->end_time);
     }
 
     public function rooms()

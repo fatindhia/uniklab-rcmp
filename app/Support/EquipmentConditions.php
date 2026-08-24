@@ -73,14 +73,27 @@ class EquipmentConditions
     /**
      * Validate a requested booking date/time against a parsed rule set.
      * Returns an array of human-readable violation messages (empty = OK).
+     *
+     * The clock-window rules only make sense for a booking that starts and
+     * finishes inside one day. A continuous run — equipment deliberately left
+     * going overnight — can satisfy none of them by construction: a 10:00-16:00
+     * item would fail the moment the run passed 16:00, and a full-day item
+     * would fail because the last day ends before closing time. So for a
+     * continuous booking only the day-of-week rule is checked (somebody still
+     * has to be there to start it), while the time window, minimum length and
+     * full-day rules are left to the daily case they were written for.
      */
-    public static function violations(array $rules, string $date, string $startTime, string $endTime): array
+    public static function violations(array $rules, string $date, string $startTime, string $endTime, bool $continuous = false): array
     {
         $violations = [];
         $day = Carbon::parse($date)->format('D');
 
         if ($rules['days'] && ! in_array($day, $rules['days'], true)) {
             $violations[] = 'is only available on '.implode(', ', $rules['days']).'.';
+        }
+
+        if ($continuous) {
+            return $violations;
         }
 
         if ($rules['time_start'] && $rules['time_end']) {

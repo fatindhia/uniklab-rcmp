@@ -19,3 +19,7 @@
 /bootstrap/cache/*.php
 /public/build/
 /database/database.sqlite
+
+# --- OS / editor ---
+.DS_Store
+/.vscode/bin/

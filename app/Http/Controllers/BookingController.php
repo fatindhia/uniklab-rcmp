@@ -14,6 +14,7 @@ use App\Models\LabEquipment;
 use App\Models\TimeBlock;
 use App\Models\User;
 use App\Support\BookingCalendar;
+use App\Support\BookingSpan;
 use App\Support\EquipmentConditions;
 use App\Support\Maintenance;
 use Illuminate\Http\Request;
@@ -100,10 +101,11 @@ class BookingController extends Controller
             'applicant_id' => ['required', 'string', 'max:30'],
             'applicant_email' => ['required', 'email', 'max:150'],
             // Digits only, no spaces/dashes/country code (e.g. 01114354678).
-            'applicant_phone' => ['nullable', 'digits_between:10,11'],
-            'applicant_department' => ['nullable', 'string', 'max:150'],
+            'applicant_phone' => ['required', 'digits_between:10,11'],
+            'applicant_department' => ['required', 'string', 'max:150'],
             'applicant_role' => ['required', 'string', 'in:'.implode(',', array_merge($staffRoles, $studentRoles))],
-            'applicant_group' => ['nullable', 'string', 'max:30'],
+            // Group is the applicant's class/cohort, which only CSL sessions are run by.
+            'applicant_group' => [$type === 'csl' ? 'required' : 'nullable', 'string', 'max:30'],
             'applicant_remark' => ['nullable', 'string', 'max:1000'],
             // A booking can only ever be for now or later. Without this a
             // backdated booking would take up a room in the calendar and the
@@ -111,7 +113,13 @@ class BookingController extends Controller
             'booking_date_from' => ['required', 'date', 'after_or_equal:today'],
             'booking_date_to' => ['nullable', 'date', 'after_or_equal:booking_date_from'],
             'start_time' => ['required', 'date_format:H:i'],
-            'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
+            // "end after start" only holds for a booking that starts and ends
+            // on the same day. A continuous run legitimately ends at an
+            // earlier clock time on a later date (20 Aug 12:30 -> 21 Aug
+            // 12:30), so the rule is applied by hand below once we know which
+            // kind of booking this is.
+            'end_time' => ['required', 'date_format:H:i'],
+            'is_continuous' => ['nullable', 'boolean'],
             'purpose' => ['required', 'string'],
             // CSL rooms come from the discipline mapping below (a package
             // discipline supplies them itself), so they're only required
@@ -135,7 +143,6 @@ class BookingController extends Controller
             // after or equal to today") reads like a rule, not an instruction.
             'booking_date_from.after_or_equal' => 'The booking date cannot be in the past.',
             'booking_date_to.after_or_equal' => 'The end date cannot be earlier than the start date.',
-            'end_time.after' => 'The end time must be later than the start time.',
         ]);
 
         // --- Email domain -> applicant category (staff/student), and role cross-check ---
@@ -181,17 +188,37 @@ class BookingController extends Controller
             }
         }
 
-        $minutes = \Carbon\Carbon::parse($data['start_time'])->diffInMinutes(\Carbon\Carbon::parse($data['end_time']));
+        $bookingDate = \Carbon\Carbon::parse($data['booking_date_from']);
+        $bookingDateTo = $data['booking_date_to'] ?? $data['booking_date_from'];
+        $isWeekend = $bookingDate->isWeekend();
+
+        // An extended booking means one of two different things, and until now
+        // the system only understood the first: the same window repeated on
+        // every day in the range (a class held 09:00-11:00 on Mon and Tue).
+        // The second is a single unbroken run — equipment that has to keep
+        // going from Wednesday noon to Thursday noon — which only R&D
+        // equipment does, and only across an actual date range.
+        $continuous = $type === 'equipment'
+            && $request->boolean('is_continuous')
+            && $bookingDateTo > $data['booking_date_from'];
+
+        if (! $continuous && $data['end_time'] <= $data['start_time']) {
+            throw ValidationException::withMessages([
+                'end_time' => 'The end time must be later than the start time.',
+            ]);
+        }
+
+        $intervals = BookingSpan::intervals($data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time'], $continuous);
+
+        // The minimum applies to one session — a 3-day daily booking of
+        // 09:00-09:30 is three half-hour sessions, not a 90-minute one.
+        $minutes = BookingSpan::sessionMinutes($intervals);
 
         if ($minutes < config('booking.min_booking_minutes')) {
             throw ValidationException::withMessages([
                 'end_time' => 'Bookings must be at least '.config('booking.min_booking_minutes').' minutes long.',
             ]);
         }
-
-        $bookingDate = \Carbon\Carbon::parse($data['booking_date_from']);
-        $bookingDateTo = $data['booking_date_to'] ?? $data['booking_date_from'];
-        $isWeekend = $bookingDate->isWeekend();
 
         // after_or_equal:today lets today through, but a slot earlier today has
         // already gone — the date rule alone can't see that.
@@ -204,9 +231,20 @@ class BookingController extends Controller
         if ($type === 'equipment') {
             $rules = config('booking.research');
 
-            if ($data['start_time'] < $rules['weekday_start'] || $data['end_time'] > $rules['weekday_end']) {
+            // A continuous run is unattended once it is going, so only its
+            // start has to fall inside lab hours — somebody has to be in the
+            // building to set the equipment off. Its end deliberately isn't
+            // checked against the closing time: finishing outside lab hours is
+            // the entire point of an overnight run.
+            $outsideHours = $continuous
+                ? ($data['start_time'] < $rules['weekday_start'] || $data['start_time'] > $rules['weekday_end'])
+                : ($data['start_time'] < $rules['weekday_start'] || $data['end_time'] > $rules['weekday_end']);
+
+            if ($outsideHours) {
                 throw ValidationException::withMessages([
-                    'start_time' => 'Research & Development lab hours are '.$rules['weekday_start'].'–'.$rules['weekday_end'].'.',
+                    'start_time' => $continuous
+                        ? 'A continuous run has to start within Research & Development lab hours ('.$rules['weekday_start'].'–'.$rules['weekday_end'].') — it can finish at any time.'
+                        : 'Research & Development lab hours are '.$rules['weekday_start'].'–'.$rules['weekday_end'].'.',
                 ]);
             }
         } elseif ($type === 'pharma') {
@@ -256,7 +294,7 @@ class BookingController extends Controller
 
         if ($type === 'csl') {
             $rules = config('booking.csl');
-            $bufferViolation = $this->cslBufferConflict($labs->pluck('id'), $data['booking_date_from'], $data['start_time'], $data['end_time'], $rules['buffer_minutes']);
+            $bufferViolation = $this->cslBufferConflict($labs->pluck('id'), $data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time'], $rules['buffer_minutes']);
 
             if ($bufferViolation) {
                 throw ValidationException::withMessages(['start_time' => $bufferViolation]);
@@ -279,7 +317,7 @@ class BookingController extends Controller
                 ]);
             }
 
-            $roomOnlyViolations = $this->roomOnlyConflicts($labs, $data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time']);
+            $roomOnlyViolations = $this->roomOnlyConflicts($labs, $data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time'], $continuous);
 
             if ($roomOnlyViolations) {
                 throw ValidationException::withMessages(['lab_ids' => $roomOnlyViolations[0]]);
@@ -389,14 +427,14 @@ class BookingController extends Controller
             $equipmentRows = $this->loadEquipmentRows($selectedEquipment);
             $hasSpecialConditions = $equipmentRows->contains(fn ($row) => $row->special_conditions_note !== '');
 
-            $equipmentViolations = $this->equipmentConflicts($selectedEquipment, $data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time'], $equipmentRows);
+            $equipmentViolations = $this->equipmentConflicts($selectedEquipment, $data['booking_date_from'], $bookingDateTo, $data['start_time'], $data['end_time'], $equipmentRows, $continuous);
 
             if ($equipmentViolations) {
                 throw ValidationException::withMessages(['equipment_names' => $equipmentViolations[0]]);
             }
         }
 
-        $booking = DB::transaction(function () use ($data, $type, $labType, $labs, $primaryLab, $primaryLabId, $pharmaCode, $paxCount, $paxNames, $paxIds, $selectedEquipment, $hasSpecialConditions, $request) {
+        $booking = DB::transaction(function () use ($data, $type, $labType, $labs, $primaryLab, $primaryLabId, $pharmaCode, $paxCount, $paxNames, $paxIds, $selectedEquipment, $hasSpecialConditions, $continuous, $request) {
             $ref = 'BK-'.str_pad((string) (Booking::max('id') + 1), 3, '0', STR_PAD_LEFT);
 
             $booking = Booking::create([
@@ -415,6 +453,7 @@ class BookingController extends Controller
                 'booking_date_to' => $data['booking_date_to'] ?? $data['booking_date_from'],
                 'start_time' => $data['start_time'],
                 'end_time' => $data['end_time'],
+                'is_continuous' => $continuous,
                 'research_pax' => $type === 'equipment' ? (1 + $paxCount) : 0,
                 'has_special_conditions' => $hasSpecialConditions,
                 'csl_session_type' => $data['csl_session_type'] ?? '',
@@ -535,6 +574,7 @@ class BookingController extends Controller
             'booking_date_to' => ['nullable', 'date'],
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['nullable', 'date_format:H:i'],
+            'is_continuous' => ['nullable', 'boolean'],
             'lab_ids' => ['array'],
             'lab_ids.*' => ['integer'],
             'equipment_names' => ['array'],
@@ -550,20 +590,38 @@ class BookingController extends Controller
         }
 
         $scheduleMessages = [];
+        $dateTo = $data['booking_date_to'] ?? $dateFrom;
 
-        if ($endTime <= $startTime) {
+        // Mirrors store(): only an R&D booking across an actual date range can
+        // be one continuous run, and only then may it end at an earlier clock
+        // time than it started.
+        $continuous = $type === 'equipment'
+            && $request->boolean('is_continuous')
+            && $dateTo > $dateFrom;
+
+        if (! $continuous && $endTime <= $startTime) {
             $scheduleMessages[] = 'End time must be after start time.';
 
             return response()->json(['ok' => false, 'schedule' => $scheduleMessages, 'rooms' => []]);
         }
 
-        $minutes = \Carbon\Carbon::parse($startTime)->diffInMinutes(\Carbon\Carbon::parse($endTime));
+        $minutes = BookingSpan::sessionMinutes(
+            BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, $continuous)
+        );
 
         if ($minutes < config('booking.min_booking_minutes')) {
             $scheduleMessages[] = 'Bookings must be at least '.config('booking.min_booking_minutes').' minutes long.';
         }
 
-        $dateTo = $data['booking_date_to'] ?? $dateFrom;
+        if ($continuous) {
+            $rules = config('booking.research');
+
+            if ($startTime < $rules['weekday_start'] || $startTime > $rules['weekday_end']) {
+                $scheduleMessages[] = 'A continuous run has to start within Research & Development lab hours ('
+                    .$rules['weekday_start'].'–'.$rules['weekday_end'].') — it can finish at any time.';
+            }
+        }
+
         $labIds = $data['lab_ids'] ?? [];
         $roomMessages = [];
 
@@ -581,7 +639,7 @@ class BookingController extends Controller
             }
 
             if ($labIds) {
-                $bufferViolation = $this->cslBufferConflict(collect($labIds), $dateFrom, $startTime, $endTime, $rules['buffer_minutes']);
+                $bufferViolation = $this->cslBufferConflict(collect($labIds), $dateFrom, $dateTo, $startTime, $endTime, $rules['buffer_minutes']);
 
                 if ($bufferViolation) {
                     $scheduleMessages[] = $bufferViolation;
@@ -606,7 +664,7 @@ class BookingController extends Controller
                     $roomMessages[] = 'All selected rooms must be from the same building.';
                 }
 
-                $roomMessages = array_merge($roomMessages, $this->roomOnlyConflicts($selectedLabs, $dateFrom, $dateTo, $startTime, $endTime));
+                $roomMessages = array_merge($roomMessages, $this->roomOnlyConflicts($selectedLabs, $dateFrom, $dateTo, $startTime, $endTime, $continuous));
             }
         }
 
@@ -614,7 +672,7 @@ class BookingController extends Controller
 
         if ($selectedEquipment) {
             $equipmentRows = $this->loadEquipmentRows($selectedEquipment);
-            $roomMessages = array_merge($roomMessages, $this->equipmentConflicts($selectedEquipment, $dateFrom, $dateTo, $startTime, $endTime, $equipmentRows));
+            $roomMessages = array_merge($roomMessages, $this->equipmentConflicts($selectedEquipment, $dateFrom, $dateTo, $startTime, $endTime, $equipmentRows, $continuous));
         }
 
         $scheduleMessages = array_values(array_unique($scheduleMessages));
@@ -714,16 +772,60 @@ class BookingController extends Controller
     }
 
     /**
-     * Applies an inclusive date-range + exclusive time-range overlap filter
-     * to a bookings query (shared by every conflict check in this controller).
+     * Narrows a bookings query to the rows that *could* clash with the given
+     * intervals. Deliberately a superset: SQL can compare a date range and a
+     * time range independently, but that is exactly the comparison that read a
+     * 20 Aug 12:30 -> 21 Aug 12:30 run as "12:30-13:30, twice" and left the
+     * night free. Once a booking can span midnight, only interval arithmetic
+     * gets the answer right, so the exact call is made in PHP by clashesWith()
+     * over this (small — already filtered by lab and date) candidate set.
+     *
+     * @param  array<int, array{0: \Illuminate\Support\Carbon, 1: \Illuminate\Support\Carbon}>  $intervals
      */
-    private function isOverlapping($query, string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function candidateBookings($query, array $intervals, int $bufferMinutes = 0)
     {
-        return $query->where('booking_date_from', '<=', $dateTo)
-            ->where('booking_date_to', '>=', $dateFrom)
-            ->where('start_time', '<', $endTime)
-            ->where('end_time', '>', $startTime);
+        [$spanFrom, $spanTo] = $this->spanDateBounds($intervals, $bufferMinutes);
+
+        return $query->where('booking_date_from', '<=', $spanTo)
+            ->where('booking_date_to', '>=', $spanFrom);
     }
+
+    /**
+     * The calendar dates a set of intervals touches, widened by any buffer.
+     * Used only to pre-filter in SQL, so erring wide is safe.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function spanDateBounds(array $intervals, int $bufferMinutes = 0): array
+    {
+        if (! $intervals) {
+            return [now()->toDateString(), now()->toDateString()];
+        }
+
+        $first = $intervals[0][0];
+        $last = $intervals[array_key_last($intervals)][1];
+
+        return [
+            $first->copy()->subMinutes($bufferMinutes)->toDateString(),
+            $last->copy()->addMinutes($bufferMinutes)->toDateString(),
+        ];
+    }
+
+    /**
+     * Does an existing booking actually occupy any of the requested time?
+     * Whichever of the two — the request or the existing row — is a continuous
+     * run, BookingSpan resolves both to absolute intervals first.
+     */
+    private function clashesWith(?Booking $booking, array $intervals, int $bufferMinutes = 0): bool
+    {
+        return $booking !== null
+            && BookingSpan::overlaps($intervals, BookingSpan::fromBooking($booking), $bufferMinutes);
+    }
+
+    /**
+     * The columns clashesWith() needs on an eager-loaded booking.
+     */
+    private const SPAN_COLUMNS = 'booking:id,booking_date_from,booking_date_to,start_time,end_time,is_continuous';
 
     /**
      * Weekends are open per room, not globally: a room with weekends_allowed = 0
@@ -838,18 +940,21 @@ class BookingController extends Controller
         return $selected->all();
     }
 
-    private function cslBufferConflict($labIds, string $date, string $startTime, string $endTime, int $bufferMinutes): ?string
+    private function cslBufferConflict($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime, int $bufferMinutes): ?string
     {
-        $bufferStart = \Carbon\Carbon::parse($startTime)->subMinutes($bufferMinutes)->format('H:i');
-        $bufferEnd = \Carbon\Carbon::parse($endTime)->addMinutes($bufferMinutes)->format('H:i');
+        // CSL sessions are never continuous, but the rooms they book can be
+        // held by a multi-day booking that merely passes through this date —
+        // which the old exact "booking_date_from = $date" match never saw.
+        $intervals = BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, false);
 
         $conflictingLabIds = BookingRoom::whereIn('lab_id', $labIds)
-            ->whereHas('booking', function ($q) use ($date, $bufferStart, $bufferEnd) {
-                $q->whereNotIn('status', ['rejected', 'cancelled'])
-                    ->where('booking_date_from', $date)
-                    ->where('start_time', '<', $bufferEnd)
-                    ->where('end_time', '>', $bufferStart);
+            ->whereHas('booking', function ($q) use ($intervals, $bufferMinutes) {
+                $q->whereNotIn('status', ['rejected', 'cancelled']);
+                $this->candidateBookings($q, $intervals, $bufferMinutes);
             })
+            ->with(self::SPAN_COLUMNS)
+            ->get()
+            ->filter(fn ($row) => $this->clashesWith($row->booking, $intervals, $bufferMinutes))
             ->pluck('lab_id')
             ->unique();
 
@@ -870,10 +975,10 @@ class BookingController extends Controller
      * the specific equipment item selected becomes unavailable (see
      * equipmentConflicts()).
      */
-    private function roomOnlyConflicts($labs, string $dateFrom, string $dateTo, string $startTime, string $endTime): array
+    private function roomOnlyConflicts($labs, string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false): array
     {
         $roomOnlyLabs = $labs->where('is_room_only', true);
-        $conflictingIds = $this->conflictingRoomOnlyLabIds($roomOnlyLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime);
+        $conflictingIds = $this->conflictingRoomOnlyLabIds($roomOnlyLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime, $continuous);
 
         $messages = [];
 
@@ -891,7 +996,7 @@ class BookingController extends Controller
      * cancelled BookingRoom for the slot — shared by roomOnlyConflicts() and
      * the live equipmentAvailability() snapshot.
      */
-    private function conflictingRoomOnlyLabIds($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function conflictingRoomOnlyLabIds($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false)
     {
         $labIds = collect($labIds);
 
@@ -899,16 +1004,21 @@ class BookingController extends Controller
             return collect();
         }
 
+        $intervals = BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, $continuous);
+
         $booked = BookingRoom::whereIn('lab_id', $labIds)
-            ->whereHas('booking', function ($q) use ($dateFrom, $dateTo, $startTime, $endTime) {
+            ->whereHas('booking', function ($q) use ($intervals) {
                 $q->whereNotIn('status', ['rejected', 'cancelled']);
-                $this->isOverlapping($q, $dateFrom, $dateTo, $startTime, $endTime);
+                $this->candidateBookings($q, $intervals);
             })
+            ->with(self::SPAN_COLUMNS)
+            ->get()
+            ->filter(fn ($row) => $this->clashesWith($row->booking, $intervals))
             ->pluck('lab_id');
 
         // Admin time blocks reserve a whole room too — treat a blocked room as
         // unavailable, same as a booked one.
-        return $booked->merge($this->blockedRoomLabIds($labIds, $dateFrom, $dateTo, $startTime, $endTime))
+        return $booked->merge($this->blockedRoomLabIds($labIds, $dateFrom, $dateTo, $startTime, $endTime, $continuous))
             ->unique()
             ->values();
     }
@@ -1021,11 +1131,11 @@ class BookingController extends Controller
      * Cannot double-book the same equipment item in the same room for an
      * overlapping slot, and any item-specific special conditions must be met.
      */
-    private function equipmentConflicts(array $selectedEquipment, string $dateFrom, string $dateTo, string $startTime, string $endTime, $equipmentRows): array
+    private function equipmentConflicts(array $selectedEquipment, string $dateFrom, string $dateTo, string $startTime, string $endTime, $equipmentRows, bool $continuous = false): array
     {
         $messages = [];
         $labIds = collect($selectedEquipment)->pluck('lab_id')->unique();
-        $conflictingKeys = $this->conflictingEquipmentKeys($labIds, $dateFrom, $dateTo, $startTime, $endTime);
+        $conflictingKeys = $this->conflictingEquipmentKeys($labIds, $dateFrom, $dateTo, $startTime, $endTime, $continuous);
 
         foreach ($selectedEquipment as $sel) {
             if ($conflictingKeys->contains($sel['lab_id'].'::'.$sel['equipment_name'])) {
@@ -1041,7 +1151,7 @@ class BookingController extends Controller
             }
 
             $rules = EquipmentConditions::parse($equipmentRow->special_conditions_note);
-            $violations = EquipmentConditions::violations($rules, $dateFrom, $startTime, $endTime);
+            $violations = EquipmentConditions::violations($rules, $dateFrom, $startTime, $endTime, $continuous);
 
             if ($rules['buffer_days']) {
                 $bufferConflict = BookingEquipment::where('equipment_name', $equipmentRow->equipment_name)
@@ -1073,7 +1183,7 @@ class BookingController extends Controller
      * non-rejected/cancelled BookingEquipment for the slot — shared by
      * equipmentConflicts() and the live equipmentAvailability() snapshot.
      */
-    private function conflictingEquipmentKeys($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function conflictingEquipmentKeys($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false)
     {
         $labIds = collect($labIds);
 
@@ -1081,37 +1191,62 @@ class BookingController extends Controller
             return collect();
         }
 
+        $intervals = BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, $continuous);
+
         $booked = BookingEquipment::whereIn('lab_id', $labIds)
-            ->whereHas('booking', function ($q) use ($dateFrom, $dateTo, $startTime, $endTime) {
+            ->whereHas('booking', function ($q) use ($intervals) {
                 $q->whereNotIn('status', ['rejected', 'cancelled']);
-                $this->isOverlapping($q, $dateFrom, $dateTo, $startTime, $endTime);
+                $this->candidateBookings($q, $intervals);
             })
+            ->with(self::SPAN_COLUMNS)
             ->get()
+            ->filter(fn ($row) => $this->clashesWith($row->booking, $intervals))
             ->map(fn ($row) => $row->lab_id.'::'.$row->equipment_name)
             ->toBase();
 
         // Admin time blocks can reserve specific equipment (or a whole room, in
         // which case all its equipment) — fold those in so a blocked item can't
         // be booked either.
-        return $booked->merge($this->blockedEquipmentKeys($labIds, $dateFrom, $dateTo, $startTime, $endTime))
+        return $booked->merge($this->blockedEquipmentKeys($labIds, $dateFrom, $dateTo, $startTime, $endTime, $continuous))
             ->unique()
             ->values();
     }
 
     /**
-     * Admin time blocks whose time range overlaps the requested slot AND whose
-     * date (or a weekly/biweekly recurrence of it) falls inside the booking's
-     * date range. These reserve rooms/equipment just like a booking does.
+     * Admin time blocks that actually sit inside the requested slot. A block is
+     * always a single day's window, but a recurring one repeats, and the
+     * booking it is measured against may now run straight through midnight —
+     * so each occurrence is turned into its own interval and compared properly.
+     * A block cannot be pre-filtered by time in SQL any more: a continuous run
+     * passing through a whole day collides with a block at any hour of it.
      */
-    private function overlappingBlocks(string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function overlappingBlocks(string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false)
     {
+        $intervals = BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, $continuous);
+        [$spanFrom, $spanTo] = $this->spanDateBounds($intervals);
+
         return TimeBlock::query()
-            ->whereTime('start_time', '<', $endTime)
-            ->whereTime('end_time', '>', $startTime)
+            // recurDates() repeats a block at most 3 more times, weekly or
+            // biweekly — so nothing based more than 42 days before the span
+            // can reach into it.
+            ->whereDate('block_date', '>=', \Carbon\Carbon::parse($spanFrom)->subDays(42))
+            ->whereDate('block_date', '<=', $spanTo)
             ->get()
-            ->filter(function (TimeBlock $block) use ($dateFrom, $dateTo) {
+            ->filter(function (TimeBlock $block) use ($intervals, $spanFrom, $spanTo) {
                 foreach (BookingCalendar::recurDates($block->block_date, $block->recurring) as $date) {
-                    if ($date >= $dateFrom && $date <= $dateTo) {
+                    if ($date < $spanFrom || $date > $spanTo) {
+                        continue;
+                    }
+
+                    $blockIntervals = BookingSpan::intervals(
+                        $date,
+                        $date,
+                        BookingSpan::timeLabel($block->start_time),
+                        BookingSpan::timeLabel($block->end_time),
+                        false,
+                    );
+
+                    if (BookingSpan::overlaps($intervals, $blockIntervals)) {
                         return true;
                     }
                 }
@@ -1124,7 +1259,7 @@ class BookingController extends Controller
      * Lab ids (from the given set) whose room is reserved by an overlapping
      * admin time block — blocks store rooms by name, so map name → id.
      */
-    private function blockedRoomLabIds($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function blockedRoomLabIds($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false)
     {
         $labIds = collect($labIds);
 
@@ -1132,7 +1267,7 @@ class BookingController extends Controller
             return collect();
         }
 
-        $blockedRoomNames = $this->overlappingBlocks($dateFrom, $dateTo, $startTime, $endTime)
+        $blockedRoomNames = $this->overlappingBlocks($dateFrom, $dateTo, $startTime, $endTime, $continuous)
             ->flatMap(fn (TimeBlock $block) => $block->rooms ?? [])
             ->unique();
 
@@ -1151,7 +1286,7 @@ class BookingController extends Controller
      * reserves those items; a block that names a room without any equipment
      * reserves every item in that room.
      */
-    private function blockedEquipmentKeys($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime)
+    private function blockedEquipmentKeys($labIds, string $dateFrom, string $dateTo, string $startTime, string $endTime, bool $continuous = false)
     {
         $labIds = collect($labIds);
 
@@ -1159,7 +1294,7 @@ class BookingController extends Controller
             return collect();
         }
 
-        $blocks = $this->overlappingBlocks($dateFrom, $dateTo, $startTime, $endTime);
+        $blocks = $this->overlappingBlocks($dateFrom, $dateTo, $startTime, $endTime, $continuous);
 
         if ($blocks->isEmpty()) {
             return collect();
@@ -1213,12 +1348,14 @@ class BookingController extends Controller
             'booking_date_to' => ['nullable', 'date'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i'],
+            'is_continuous' => ['nullable', 'boolean'],
         ]);
 
         $dateFrom = $data['booking_date_from'];
         $dateTo = $data['booking_date_to'] ?? $dateFrom;
         $startTime = $data['start_time'];
         $endTime = $data['end_time'];
+        $continuous = $request->boolean('is_continuous') && $dateTo > $dateFrom;
 
         $labs = Lab::query()
             ->with(['equipment' => fn ($query) => $query->orderBy('sort_order')])
@@ -1229,8 +1366,8 @@ class BookingController extends Controller
         $roomOnlyLabs = $labs->where('is_room_only', true);
         $equipmentLabs = $labs->where('is_room_only', false);
 
-        $conflictingRoomIds = $this->conflictingRoomOnlyLabIds($roomOnlyLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime);
-        $conflictingEquipmentKeys = $this->conflictingEquipmentKeys($equipmentLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime);
+        $conflictingRoomIds = $this->conflictingRoomOnlyLabIds($roomOnlyLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime, $continuous);
+        $conflictingEquipmentKeys = $this->conflictingEquipmentKeys($equipmentLabs->pluck('id'), $dateFrom, $dateTo, $startTime, $endTime, $continuous);
 
         // Rooms that don't open on weekends are unavailable for the whole slot,
         // regardless of what else is booked — surfaced separately from "booked"
@@ -1281,12 +1418,16 @@ class BookingController extends Controller
      */
     private function pharmaRemainingCapacity(Lab $lab, string $dateFrom, string $dateTo, string $startTime, string $endTime): int
     {
+        // Pharma bookings are never continuous, but they share the one overlap
+        // implementation so the semantics can never drift apart again.
+        $intervals = BookingSpan::intervals($dateFrom, $dateTo, $startTime, $endTime, false);
+
         $booked = Booking::where('lab_type', 'pharma')
             ->whereNotIn('status', ['rejected', 'cancelled'])
             ->whereHas('rooms', fn ($q) => $q->where('lab_id', $lab->id))
-            ->where(function ($q) use ($dateFrom, $dateTo, $startTime, $endTime) {
-                $this->isOverlapping($q, $dateFrom, $dateTo, $startTime, $endTime);
-            })
+            ->where(fn ($q) => $this->candidateBookings($q, $intervals))
+            ->get(['id', 'booking_date_from', 'booking_date_to', 'start_time', 'end_time', 'is_continuous', 'pharma_num_students'])
+            ->filter(fn (Booking $other) => $this->clashesWith($other, $intervals))
             ->sum('pharma_num_students');
 
         return max(0, $lab->capacity - $booked);

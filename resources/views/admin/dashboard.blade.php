@@ -111,9 +111,21 @@
         // Merge today's bookings and blocks into one time-ordered timeline.
         $todayTimeline = collect();
         foreach ($todayBookings as $b) {
+            // A continuous run occupies today differently depending on where
+            // today falls in it — it may have started yesterday and still be
+            // going, in which case today's share is 00:00 onwards, not the
+            // clock time it originally started at.
+            $slice = collect(\App\Support\BookingSpan::daySlices(
+                $b->booking_date_from->format('Y-m-d'),
+                $b->booking_date_to?->format('Y-m-d'),
+                $b->start_time->format('H:i'),
+                $b->end_time->format('H:i'),
+                (bool) $b->is_continuous,
+            ))->firstWhere('date', today()->toDateString());
+
             $todayTimeline->push([
-                'start' => $b->start_time->format('H:i'),
-                'end' => $b->end_time->format('H:i'),
+                'start' => $slice['start'] ?? $b->start_time->format('H:i'),
+                'end' => $slice['end'] ?? $b->end_time->format('H:i'),
                 'title' => $b->applicant_name,
                 'sub' => $b->rooms->map(fn ($r) => $r->lab?->name)->filter()->implode(', ') ?: ucfirst($b->lab_type).' lab',
                 'type' => $b->lab_type,
