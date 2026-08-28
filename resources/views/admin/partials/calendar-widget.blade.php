@@ -26,6 +26,7 @@
             <span><span class="pc-dot pc-dot--pharma"></span>Pharma</span>
             <span><span class="pc-dot pc-dot--block"></span>Blocked</span>
             <span><span class="pc-dot pc-dot--pending"></span>Pending</span>
+            <span><span class="pc-dot pc-dot--holiday"></span>Public holiday</span>
         </div>
     </div>
 

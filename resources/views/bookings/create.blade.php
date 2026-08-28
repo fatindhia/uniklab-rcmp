@@ -406,6 +406,12 @@
                                 <input type="date" name="booking_date_to" id="booking-date-to" min="{{ today()->toDateString() }}" value="{{ old('booking_date_to') }}">
                             </div>
                         </div>
+
+                        {{-- Public-holiday heads-up, sat right under the dates that
+                             trigger it. Amber, not the red of #schedule-alert below:
+                             a booking on a holiday is still accepted, it just may be
+                             rejected or rescheduled by the administrator. --}}
+                        <div id="holiday-alert" class="review-banner" style="display:none; margin-top:12px; background:rgba(224,180,41,.14); border-color:#c99a1e; color:#6b4e07;"></div>
                         @if ($type === 'equipment')
                             {{-- Two dates can mean two very different things. Until
                                  this choice existed the system only understood the
@@ -1478,6 +1484,41 @@
             @endphp
             const hoursRules = @json($hoursRules);
 
+            // Malaysian public holidays (federal + Perak), date-keyed. Sent with
+            // the page so the warning is instant — see BookingController::create().
+            const PUBLIC_HOLIDAYS = @json($publicHolidays ?? []);
+
+            // Every holiday the booking covers, not just the ones its two end
+            // dates land on: an extended booking can straddle a holiday without
+            // starting or ending on one.
+            function holidaysInBooking() {
+                const from = textVal('booking_date_from');
+                if (!from) return [];
+                const to = textVal('booking_date_to') || from;
+                const [lo, hi] = from <= to ? [from, to] : [to, from];
+
+                return Object.keys(PUBLIC_HOLIDAYS)
+                    .filter((date) => date >= lo && date <= hi)
+                    .sort()
+                    .map((date) => ({ date, ...PUBLIC_HOLIDAYS[date] }));
+            }
+
+            function holidayMessages() {
+                return holidaysInBooking().map((h) => {
+                    const day = new Date(h.date + 'T00:00:00')
+                        .toLocaleDateString('en-MY', { day: '2-digit', month: 'short' });
+                    return day + ' is a public holiday (' + h.name + ')'
+                        + (h.subject_to_change ? ', on a date that is not yet gazetted' : '')
+                        + ' — the labs are normally closed.';
+                });
+            }
+
+            const holidayAlert = document.getElementById('holiday-alert');
+
+            function renderHolidayAlert() {
+                renderAlert(holidayAlert, holidayMessages());
+            }
+
             function localScheduleMessages() {
                 const dateFrom = textVal('booking_date_from');
                 const startTime = textVal('start_time');
@@ -1535,6 +1576,7 @@
             }
 
             function scheduleAvailabilityCheck() {
+                renderHolidayAlert();
                 if (!scheduleAlert && !roomsAlert) return;
                 renderScheduleAlert();
                 clearTimeout(availabilityTimer);

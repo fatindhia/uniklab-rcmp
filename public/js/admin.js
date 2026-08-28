@@ -299,6 +299,20 @@
             return { bookings, blocks };
         }
 
+        // Public holidays sit outside the category filter — a holiday belongs to
+        // no lab type, so choosing "CSL" must not hide it. Read straight off the
+        // day's payload rather than through the filtering helpers above.
+        function admHolidayFor(events, ds) {
+            const h = (events || {})[ds]?.holiday;
+            if (!h) return null;
+            return {
+                // Dates for Raya/Deepavali are gazetted late, so the ones still
+                // marked provisional say so rather than reading as confirmed.
+                label: h.name + (h.subject_to_change ? ' *' : ''),
+                title: h.name + (h.subject_to_change ? ' (date subject to change)' : ''),
+            };
+        }
+
         function admRenderCalendar(prefix) {
             const st = ADM_CAL[prefix];
             const label = document.getElementById(prefix + '-label');
@@ -324,14 +338,26 @@
                 num.textContent = d;
                 cell.appendChild(num);
 
+                const holiday = admHolidayFor(st.events, ds);
+                if (holiday) cell.classList.add('cal-day--holiday');
+
                 const { bookings, blocks } = admEventsForDate(prefix, ds);
                 const items = [
                     ...blocks.map(b => ({ label: b.rooms || b.title || 'Blocked', full: (b.title || 'Blocked') + ' — ' + (b.rooms || 'no room'), type: 'block', pending: false })),
                     ...bookings.map(b => ({ label: b.rooms || (b.type.charAt(0).toUpperCase() + b.type.slice(1) + ' lab'), full: (b.rooms || 'Room TBC') + ' — ' + b.name, type: b.type, pending: b.status === 'pending' })),
                 ];
-                if (items.length) {
+                if (holiday || items.length) {
                     const bars = document.createElement('div');
                     bars.className = 'cal-bars';
+                    // Deliberately outside the items cap below, so the holiday is
+                    // never the thing that ends up hidden behind "+N more".
+                    if (holiday) {
+                        const bar = document.createElement('span');
+                        bar.className = 'cal-bar cal-bar--holiday';
+                        bar.textContent = holiday.label;
+                        bar.title = holiday.title;
+                        bars.appendChild(bar);
+                    }
                     items.slice(0, 1).forEach(item => {
                         const bar = document.createElement('span');
                         bar.className = 'cal-bar cal-bar--' + item.type + (item.pending ? ' cal-bar--pending' : '');
@@ -387,6 +413,11 @@
 
             const { bookings, blocks } = admEventsForDate(prefix, ds);
             let html = `<div style="padding:10px 15px;"><a class="button button-secondary" href="${window.ADMIN_TIME_BLOCKS_URL}?date=${ds}" style="min-height:32px; padding:0 12px; font-size:0.78rem;">🗓 Block This Date</a></div>`;
+
+            const holiday = admHolidayFor(ADM_CAL[prefix].events, ds);
+            if (holiday) {
+                html += `<div class="drawer-item"><span class="type-dot type-dot--holiday"></span> <strong>${admEsc(holiday.label)}</strong><div class="muted" style="font-size:.76rem; margin-top:3px;">Public holiday</div></div>`;
+            }
 
             if (blocks.length) {
                 blocks.forEach(b => {
@@ -450,15 +481,27 @@
                     el.appendChild(num);
 
                     if (!other) {
+                        const holiday = admHolidayFor(EVENTS, ds);
+                        if (holiday) el.classList.add('pc-day--holiday');
+
                         const { bookings, blocks } = eventsFor(ds);
                         const items = [
                             ...blocks.map(b => ({ label: b.rooms || b.title || 'Blocked', type: 'block', pending: false })),
                             ...bookings.map(b => ({ label: b.rooms || (b.type.charAt(0).toUpperCase() + b.type.slice(1)), type: b.type, pending: b.status === 'pending' })),
                         ];
 
-                        if (items.length) {
+                        if (holiday || items.length) {
                             const bars = document.createElement('div');
                             bars.className = 'pc-bars';
+                            // Deliberately outside the items cap below, so the
+                            // holiday is never hidden behind "+N more".
+                            if (holiday) {
+                                const bar = document.createElement('span');
+                                bar.className = 'pc-bar pc-bar--holiday';
+                                bar.textContent = holiday.label;
+                                bar.title = holiday.title;
+                                bars.appendChild(bar);
+                            }
                             items.slice(0, 3).forEach(item => {
                                 const bar = document.createElement('span');
                                 bar.className = 'pc-bar pc-bar--' + item.type + (item.pending ? ' pc-bar--pending' : '');
@@ -505,6 +548,14 @@
                 // same shape the public homepage calendar uses.
                 const line = (text, cls) => text ? `<span class="${cls}">${admEsc(text)}</span>` : '';
 
+                const holiday = admHolidayFor(EVENTS, ds);
+                if (holiday) {
+                    html += `<div class="pc-item"><span class="pc-dot pc-dot--holiday"></span><div class="pc-item-lines">`
+                        + line(holiday.label, 'pc-item-room')
+                        + line('Public holiday', 'pc-item-meta')
+                        + `</div></div>`;
+                }
+
                 blocks.forEach(b => {
                     html += `<div class="pc-item" data-block="${admEscAttr(JSON.stringify(b))}"><span class="pc-dot pc-dot--block"></span><div class="pc-item-lines">`
                         + line(b.rooms || b.title || 'Blocked', 'pc-item-room')
@@ -524,7 +575,9 @@
                         + `</div></div>`;
                 });
                 if (!blocks.length && !bookings.length) {
-                    html = '<div class="pc-empty">No bookings on this date.</div>';
+                    // Appended, not assigned: on a public holiday both lines are
+                    // worth showing — the holiday name and the empty day.
+                    html += '<div class="pc-empty">No bookings on this date.</div>';
                 }
                 body.innerHTML = html;
                 admBindCalendarHovercards(body);

@@ -1,0 +1,146 @@
+{
+    "2026-01-01": {
+        "name": "Tahun Baharu",
+        "subject_to_change": false
+    },
+    "2026-02-01": {
+        "name": "Hari Thaipusam",
+        "subject_to_change": false
+    },
+    "2026-02-17": {
+        "name": "Tahun Baharu Cina",
+        "subject_to_change": false
+    },
+    "2026-02-18": {
+        "name": "Tahun Baharu Cina (Hari Kedua)",
+        "subject_to_change": false
+    },
+    "2026-03-07": {
+        "name": "Hari Nuzul Al-Quran",
+        "subject_to_change": false
+    },
+    "2026-03-21": {
+        "name": "Hari Raya Puasa",
+        "subject_to_change": true
+    },
+    "2026-03-22": {
+        "name": "Hari Raya Puasa (Hari Kedua)",
+        "subject_to_change": true
+    },
+    "2026-05-01": {
+        "name": "Hari Pekerja",
+        "subject_to_change": false
+    },
+    "2026-05-27": {
+        "name": "Hari Raya Qurban",
+        "subject_to_change": true
+    },
+    "2026-05-31": {
+        "name": "Hari Wesak",
+        "subject_to_change": false
+    },
+    "2026-06-01": {
+        "name": "Hari Keputeraan Rasmi Seri Paduka Baginda Yang di-Pertuan Agong",
+        "subject_to_change": false
+    },
+    "2026-06-17": {
+        "name": "Awal Muharam (Maal Hijrah)",
+        "subject_to_change": false
+    },
+    "2026-08-25": {
+        "name": "Hari Keputeraan Nabi Muhammad S.A.W. (Maulidur Rasul)",
+        "subject_to_change": false
+    },
+    "2026-08-31": {
+        "name": "Hari Kebangsaan",
+        "subject_to_change": false
+    },
+    "2026-09-16": {
+        "name": "Hari Malaysia",
+        "subject_to_change": false
+    },
+    "2026-11-06": {
+        "name": "Hari Keputeraan Sultan Perak",
+        "subject_to_change": false
+    },
+    "2026-11-08": {
+        "name": "Hari Deepavali",
+        "subject_to_change": true
+    },
+    "2026-12-25": {
+        "name": "Hari Krismas",
+        "subject_to_change": false
+    },
+    "2027-01-01": {
+        "name": "Tahun Baharu",
+        "subject_to_change": false
+    },
+    "2027-01-22": {
+        "name": "Hari Thaipusam",
+        "subject_to_change": false
+    },
+    "2027-02-06": {
+        "name": "Tahun Baharu Cina",
+        "subject_to_change": false
+    },
+    "2027-02-07": {
+        "name": "Tahun Baharu Cina (Hari Kedua)",
+        "subject_to_change": false
+    },
+    "2027-02-24": {
+        "name": "Hari Nuzul Al-Quran",
+        "subject_to_change": false
+    },
+    "2027-03-10": {
+        "name": "Hari Raya Puasa",
+        "subject_to_change": true
+    },
+    "2027-03-11": {
+        "name": "Hari Raya Puasa (Hari Kedua)",
+        "subject_to_change": true
+    },
+    "2027-05-01": {
+        "name": "Hari Pekerja",
+        "subject_to_change": false
+    },
+    "2027-05-17": {
+        "name": "Hari Raya Qurban",
+        "subject_to_change": true
+    },
+    "2027-05-20": {
+        "name": "Hari Wesak",
+        "subject_to_change": false
+    },
+    "2027-06-06": {
+        "name": "Awal Muharam (Maal Hijrah)",
+        "subject_to_change": false
+    },
+    "2027-06-07": {
+        "name": "Hari Keputeraan Rasmi Seri Paduka Baginda Yang di-Pertuan Agong",
+        "subject_to_change": false
+    },
+    "2027-08-15": {
+        "name": "Hari Keputeraan Nabi Muhammad S.A.W. (Maulidur Rasul)",
+        "subject_to_change": false
+    },
+    "2027-08-31": {
+        "name": "Hari Kebangsaan",
+        "subject_to_change": false
+    },
+    "2027-09-16": {
+        "name": "Hari Malaysia",
+        "subject_to_change": false
+    },
+    "2027-10-28": {
+        "name": "Hari Deepavali",
+        "subject_to_change": true
+    },
+    "2027-11-05": {
+        "name": "Hari Keputeraan Sultan Perak",
+        "subject_to_change": false
+    },
+    "2027-12-25": {
+        "name": "Hari Krismas",
+        "subject_to_change": false
+    }
+}

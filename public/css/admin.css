@@ -8,7 +8,7 @@
             --radius: 16px; --radius-sm: 10px;
             --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
             --type-research: #7d9194; --type-csl: #8c7a9c; --type-pharma: #7d9068; --type-block: #b0835f;
-            --cal-research: #4a5f62; --cal-csl: #5a4d6b; --cal-pharma: #4e5c3c; --cal-block: #7a5533; --cal-pending: #e0b429;
+            --cal-research: #4a5f62; --cal-csl: #5a4d6b; --cal-pharma: #4e5c3c; --cal-block: #7a5533; --cal-pending: #e0b429; --cal-holiday: #a13d3d;
             --sidebar-w: 252px; --sidebar-w-collapsed: 76px;
         }
         * { box-sizing: border-box; }
@@ -227,7 +227,7 @@
         /* Type dots/chips */
         .type-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
         .type-dot--research { background: var(--type-research); } .type-dot--csl { background: var(--type-csl); } .type-dot--pharma { background: var(--type-pharma); } .type-dot--block { background: var(--type-block); }
-        .type-dot--approved { background: #1e6b3b; } .type-dot--pending { background: var(--cal-pending); } .type-dot--rejected { background: #c0392b; } .type-dot--cancelled { background: #8a97a0; } .type-dot--blocked { background: #7d9068; }
+        .type-dot--approved { background: #1e6b3b; } .type-dot--pending { background: var(--cal-pending); } .type-dot--rejected { background: #c0392b; } .type-dot--cancelled { background: #8a97a0; } .type-dot--blocked { background: #7d9068; } .type-dot--holiday { background: var(--cal-holiday); }
         .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 16px; font-size: 0.76rem; color: var(--muted); border-top: 1px solid var(--line); }
         .cal-legend span { display: inline-flex; align-items: center; gap: 6px; }
 
@@ -253,6 +253,7 @@
         .cal-bar { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: break-word; font-size: 0.58rem; font-weight: 700; line-height: 1.25; color: #fff; padding: 1px 4px; border-radius: 4px; }
         .cal-bar--research { background: var(--cal-research); } .cal-bar--csl { background: var(--cal-csl); } .cal-bar--pharma { background: var(--cal-pharma); } .cal-bar--block { background: var(--cal-block); }
         .cal-bar--pending { background: var(--cal-pending); color: #3d2f00; opacity: 1; }
+        .cal-bar--holiday { background: var(--cal-holiday); }
         .cal-more { font-size: 0.6rem; font-weight: 700; color: var(--muted); }
 
         /* Home-style two-panel calendar (pc-*) */
@@ -274,15 +275,21 @@
         .pc-day.other { background: rgba(49, 43, 44,.015); cursor: default; }
         .pc-day.other .pc-day-num { color: rgba(49, 43, 44,.28); }
         .pc-day-num { font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; align-self: flex-start; font-family: var(--mono); }
+        /* Kept very light so it reads as a background state without competing
+           with .today or the inset ring on .selected. */
+        .pc-day--holiday { background: rgba(161, 61, 61,.05); }
+        .cal-day--holiday { background: rgba(161, 61, 61,.05); }
         .pc-day.today .pc-day-num { background: rgba(125, 145, 148,.14); color: var(--brand-2); }
         .pc-bars { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; min-width: 0; }
         .pc-bar { display: block; font-size: 0.6rem; font-weight: 700; line-height: 1.5; color: #fff; padding: 1px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pc-bar--research { background: var(--cal-research); } .pc-bar--csl { background: var(--cal-csl); } .pc-bar--pharma { background: var(--cal-pharma); } .pc-bar--block { background: var(--cal-block); }
         .pc-bar--pending { background: var(--cal-pending); color: #3d2f00; opacity: 1; }
+        .pc-bar--holiday { background: var(--cal-holiday); }
         .pc-more { font-size: 0.6rem; font-weight: 700; color: var(--muted); padding: 1px 6px; }
         .pc-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
         .pc-dot--research { background: var(--cal-research); } .pc-dot--csl { background: var(--cal-csl); } .pc-dot--pharma { background: var(--cal-pharma); } .pc-dot--block { background: var(--cal-block); }
         .pc-dot--pending { background: var(--cal-pending); }
+        .pc-dot--holiday { background: var(--cal-holiday); }
         .pc-status { font-weight: 700; text-transform: capitalize; }
         .pc-status--approved { color: #1c6b39; }
         .pc-status--pending { color: #a07c1f; }

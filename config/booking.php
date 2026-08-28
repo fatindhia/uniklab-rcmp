@@ -76,6 +76,19 @@ return [
         'buffer_minutes' => 30,
     ],
 
+    // Malaysian public holidays surfaced on the calendars and warned about on
+    // the booking form. There is no official government API for these
+    // (data.gov.my only publishes Data Catalogue, OpenDOSM, Transport and
+    // Weather), so this points at a community service. Nothing on a page render
+    // ever calls it — only the holidays:sync command does, and
+    // App\Support\PublicHolidays falls back to a bundled snapshot if it is
+    // unreachable. The Perak state code returns federal *and* state holidays
+    // merged, so one call per year covers RCMP.
+    'holidays' => [
+        'api_url' => env('HOLIDAY_API_URL', 'https://malaysia-holiday.dydxsoft.my/api/v1/holidays'),
+        'state' => env('HOLIDAY_STATE', 'PRK'),
+    ],
+
     'csl_session_types' => [
         'Teaching session', 'Practice session', 'Revision', 'OSCE / Assessment', 'Simulation / Emergency drill',
     ],

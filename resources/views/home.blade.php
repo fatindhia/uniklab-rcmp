@@ -15,6 +15,7 @@
             --cal-pharma: #4e5c3c;
             --cal-block: #7a5533;
             --cal-pending: #e0b429;
+            --cal-holiday: #a13d3d;
         }
 
         @keyframes fadeUp {
@@ -389,6 +390,10 @@
             opacity: 1;
         }
 
+        .pc-bar--holiday {
+            background: var(--cal-holiday);
+        }
+
         .pc-more {
             font-size: 0.6rem;
             font-weight: 700;
@@ -421,6 +426,16 @@
 
         .pc-dot--pending {
             background: var(--cal-pending);
+        }
+
+        .pc-dot--holiday {
+            background: var(--cal-holiday);
+        }
+
+        /* Kept very light so it reads as a background state without competing
+           with .today or the inset ring on .selected. */
+        .pc-day--holiday {
+            background: rgba(161, 61, 61, .05);
         }
 
         .pc-legend {
@@ -887,6 +902,7 @@
                         <span><span class="pc-dot pc-dot--pharma"></span>Pharma</span>
                         <span><span class="pc-dot pc-dot--block"></span>Blocked</span>
                         <span><span class="pc-dot pc-dot--pending"></span>Pending</span>
+                        <span><span class="pc-dot pc-dot--holiday"></span>Public holiday</span>
                     </div>
                 </div>
 
@@ -1070,6 +1086,20 @@
                 };
             }
 
+            // Public holidays sit outside the category filter — a holiday belongs
+            // to no lab type, so choosing "CSL" must not hide it. Read straight
+            // off the day's payload rather than through eventsFor().
+            function holidayFor(ds) {
+                const h = EVENTS[ds]?.holiday;
+                if (!h) return null;
+                return {
+                    // Dates for Raya/Deepavali are gazetted late, so the ones
+                    // still provisional say so rather than reading as confirmed.
+                    label: h.name + (h.subject_to_change ? ' *' : ''),
+                    title: h.name + (h.subject_to_change ? ' (date subject to change)' : ''),
+                };
+            }
+
             function render() {
                 document.getElementById('pc-label').textContent = MONTHS[state.month] + ' ' + state.year;
                 const grid = document.getElementById('pc-grid');
@@ -1093,6 +1123,9 @@
                     el.appendChild(num);
 
                     if (!other) {
+                        const holiday = holidayFor(ds);
+                        if (holiday) el.classList.add('pc-day--holiday');
+
                         const {
                             bookings,
                             blocks
@@ -1110,9 +1143,18 @@
                             })),
                         ];
 
-                        if (items.length) {
+                        if (holiday || items.length) {
                             const bars = document.createElement('div');
                             bars.className = 'pc-bars';
+                            // Deliberately outside the items cap below, so the
+                            // holiday is never hidden behind "+N more".
+                            if (holiday) {
+                                const bar = document.createElement('span');
+                                bar.className = 'pc-bar pc-bar--holiday';
+                                bar.textContent = holiday.label;
+                                bar.title = holiday.title;
+                                bars.appendChild(bar);
+                            }
                             items.slice(0, 3).forEach(item => {
                                 const bar = document.createElement('span');
                                 bar.className = 'pc-bar pc-bar--' + item.type + (item.pending ?
@@ -1169,6 +1211,14 @@
                 // Room, time, subject and status each get their own line.
                 const line = (text, cls) => text ? `<span class="${cls}">${esc(text)}</span>` : '';
 
+                const holiday = holidayFor(ds);
+                if (holiday) {
+                    html += `<div class="pc-item"><span class="pc-dot pc-dot--holiday"></span><div class="pc-item-lines">`
+                        + line(holiday.label, 'pc-item-room')
+                        + line('Public holiday', 'pc-item-meta')
+                        + `</div></div>`;
+                }
+
                 blocks.forEach(b => {
                     html += `<div class="pc-item"><span class="pc-dot pc-dot--block"></span><div class="pc-item-lines">`
                         + line(b.rooms || b.title || 'Blocked', 'pc-item-room')
@@ -1191,7 +1241,9 @@
                         + `</div></div>`;
                 });
                 if (!blocks.length && !bookings.length) {
-                    html = '<div class="pc-empty">No bookings on this date.</div>';
+                    // Appended, not assigned: on a public holiday both lines are
+                    // worth showing — the holiday name and the empty day.
+                    html += '<div class="pc-empty">No bookings on this date.</div>';
                 }
                 body.innerHTML = html;
                 body.scrollTop = 0;

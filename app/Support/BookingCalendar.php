@@ -128,6 +128,14 @@ class BookingCalendar
             }
         }
 
+        // Public holidays are not tied to a lab type, so they ride along in
+        // every ?type= variant — and unlike bookings and blocks they create a
+        // day's entry outright, since a holiday is worth showing on a date with
+        // nothing else on it.
+        foreach (PublicHolidays::map() as $date => $holiday) {
+            $events[$date]['holiday'] = $holiday;
+        }
+
         return $events;
     }
 

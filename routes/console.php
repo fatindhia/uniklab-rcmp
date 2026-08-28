@@ -14,3 +14,9 @@ Artisan::command('inspire', function () {
 Schedule::command('bookings:remind-pending')
     ->hourly()
     ->withoutOverlapping();
+
+// Holiday dates rarely move, but the ones flagged is_subject_to_change (Raya,
+// Deepavali) are gazetted late, so a weekly refresh is enough to catch them.
+Schedule::command('holidays:sync')
+    ->weeklyOn(1, '03:00')
+    ->withoutOverlapping();

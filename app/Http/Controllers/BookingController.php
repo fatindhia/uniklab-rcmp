@@ -17,6 +17,7 @@ use App\Support\BookingCalendar;
 use App\Support\BookingSpan;
 use App\Support\EquipmentConditions;
 use App\Support\Maintenance;
+use App\Support\PublicHolidays;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -71,12 +72,17 @@ class BookingController extends Controller
         $studentEmailDomain = config('booking.student_email_domain');
         $paxMax = config('booking.pax_max');
         $buildings = $labs->where('lab_type', 'research')->pluck('building')->unique()->sort()->values();
+        // Handed to the page whole rather than looked up per date change: it is
+        // a few dozen entries, and an inline map means the holiday warning fires
+        // the instant a date is picked, with no round-trip.
+        $publicHolidays = PublicHolidays::map();
 
         return view('bookings.create', compact(
             'type', 'labs', 'applicantRoles', 'staffRoles', 'studentRoles',
             'cslSessionTypes', 'cslDisciplines', 'cslPackageDisciplines', 'cslDisciplineLabIds',
             'researchRules', 'pharmaRules', 'cslRules',
-            'staffEmailDomain', 'studentEmailDomain', 'paxMax', 'buildings', 'maintenanceBlocked'
+            'staffEmailDomain', 'studentEmailDomain', 'paxMax', 'buildings', 'maintenanceBlocked',
+            'publicHolidays'
         ));
     }
 
