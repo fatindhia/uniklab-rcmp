@@ -329,6 +329,7 @@
         .pc-hovercard-row { display: grid; grid-template-columns: 68px 1fr; gap: 8px; padding: 3px 0; }
         .pc-hovercard-row .k { color: var(--muted); font-weight: 600; }
         .pc-hovercard-row .v { font-weight: 600; word-break: break-word; }
+        .pc-hovercard-holiday { color: var(--cal-holiday); font-weight: 700; font-size: .95em; }
         .pc-hovercard-sec { margin: 10px 0 5px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 0.7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: 800; }
         .pc-hovercard-room { font-weight: 800; margin-top: 4px; }
         .pc-hovercard-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(74,95,98,.12); color: var(--brand-2); font-size: .66rem; font-weight: 700; }

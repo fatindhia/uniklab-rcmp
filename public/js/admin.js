@@ -113,6 +113,22 @@
             return html;
         }
 
+        /**
+         * Public-holiday note for a booking's Date row in the hover card. Uses
+         * the holidays already carried by BookingModalPayload, so the card and
+         * the detail modal never disagree about a date.
+         */
+        function admHolidayRow(holidays) {
+            if (!holidays || !holidays.length) return '';
+            const lines = holidays.map((h) => {
+                const d = new Date(h.date + 'T00:00:00')
+                    .toLocaleDateString('en-MY', { day: '2-digit', month: 'short' });
+                return admEsc(d) + ' — ' + admEsc(h.name) + (h.subject_to_change ? ' (not yet gazetted)' : '');
+            }).join('<br>');
+            return `<div class="pc-hovercard-row"><span class="k"></span>`
+                + `<span class="v pc-hovercard-holiday">🇲🇾 Public holiday<br>${lines}</span></div>`;
+        }
+
         function admHovercardHtml(basic, full) {
             const kv = (k, v) => v ? `<div class="pc-hovercard-row"><span class="k">${admEsc(k)}</span><span class="v">${admEsc(v)}</span></div>` : '';
             const type = basic.type ? basic.type.charAt(0).toUpperCase() + basic.type.slice(1) : '';
@@ -134,6 +150,7 @@
 
             html += kv('Lab type', type);
             html += kv('Date', (full && full.date) || '');
+            html += admHolidayRow(full && full.holidays);
             html += kv('Time', `${basic.start}–${basic.end}`);
 
             if (full && full.roomsDetail && full.roomsDetail.length) {

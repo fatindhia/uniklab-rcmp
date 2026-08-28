@@ -18,6 +18,9 @@
     .bm-field { padding: 0; background: none; border: none; border-radius: 0; min-width: 0; }
     .bm-field-lbl { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
     .bm-field-val { font-size: .93rem; font-weight: 700; color: var(--ink); word-break: break-word; }
+    /* Public-holiday note, sat under the Date value it qualifies. */
+    .bm-field-note { display: block; margin-top: 5px; font-size: .74rem; font-weight: 700; line-height: 1.45; color: #8c3535; }
+    .bm-field-note span { display: block; font-weight: 600; }
     .bm-text { font-size: .9rem; line-height: 1.65; white-space: pre-line; background: none; border: none; border-top: 1px solid var(--line); border-radius: 0; padding: 12px 0 0; }
     .bm-room { padding: 12px 0; border: none; border-bottom: 1px solid var(--line); border-radius: 0; margin-bottom: 0; background: none; }
     .bm-room:last-child { border-bottom: none; }
@@ -84,10 +87,30 @@
 
     // multiline: keep the applicant's own line breaks (e.g. a CSL procedure
     // listed one item per line) instead of collapsing them into one run-on line.
-    function bmField(label, value, multiline) {
+    function bmField(label, value, multiline, note) {
         return `<div class="bm-field"><span class="bm-field-lbl">${label}</span>`
             + `<span class="bm-field-val"${multiline ? ' style="white-space:pre-line;"' : ''}>`
-            + `${value || value === 0 ? bmEsc(value) : '—'}</span></div>`;
+            + `${value || value === 0 ? bmEsc(value) : '—'}</span>`
+            + (note || '')
+            + `</div>`;
+    }
+
+    /**
+     * Public-holiday note for the Date field. Rendered inside the field rather
+     * than as a row of its own so it reads as a qualifier on the date, which is
+     * what an administrator is checking when they open the booking.
+     */
+    function bmHolidayNote(holidays) {
+        if (!holidays || !holidays.length) return '';
+        return `<span class="bm-field-note">🇲🇾 Public holiday`
+            + holidays.map((h) => {
+                const d = new Date(h.date + 'T00:00:00')
+                    .toLocaleDateString('en-MY', { day: '2-digit', month: 'short' });
+                return `<span>${bmEsc(d)} — ${bmEsc(h.name)}`
+                    + (h.subject_to_change ? ' (date not yet gazetted)' : '')
+                    + `</span>`;
+            }).join('')
+            + `</span>`;
     }
 
     function bmCap(s) {
@@ -117,7 +140,7 @@
         const schedule = [
             bmField('Lab type', typeLabel),
             bmField('Building', data.building),
-            bmField('Date', data.date),
+            bmField('Date', data.date, false, bmHolidayNote(data.holidays)),
             bmField('Time', data.time_label || `${data.start || '—'} – ${data.end || '—'}`),
         ];
         if (data.lab_type === 'research') {

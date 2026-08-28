@@ -63,6 +63,18 @@ class BookingModalPayload
                 'id' => $s->student_id,
                 'year' => $s->student_year,
             ])->values(),
+            // Public holidays this booking lands on, so an administrator
+            // reviewing it can see the labs are normally closed that day. Covers
+            // the whole span, not just the two end dates: an extended booking
+            // can straddle a holiday without starting or ending on one.
+            'holidays' => collect(PublicHolidays::between(
+                optional($booking->booking_date_from)->format('Y-m-d') ?? '',
+                optional($booking->booking_date_to ?? $booking->booking_date_from)->format('Y-m-d') ?? '',
+            ))->map(fn ($holiday, $date) => [
+                'date' => $date,
+                'name' => $holiday['name'],
+                'subject_to_change' => $holiday['subject_to_change'],
+            ])->values(),
             'audit' => $booking->auditLogs->map(fn ($a) => [
                 'action' => ucfirst($a->action),
                 'by' => $a->performedBy?->full_name ?? 'Applicant',
