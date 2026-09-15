@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\StaffController as AdminStaffController;
 use App\Http\Controllers\Admin\TimeBlockController as AdminTimeBlockController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\MicrosoftAuthController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
@@ -25,13 +26,22 @@ Route::get('/bookings/{booking:ref}', [BookingController::class, 'show'])->name(
 Route::get('/check-booking', [BookingController::class, 'lookup'])->name('bookings.lookup');
 
 Route::get('/admin/login', [AuthController::class, 'showLogin'])->name('login');
+// Local Staff ID + password login — only served while SSO_ENABLED=false.
 // Throttled: the password form is reachable from the open internet, so cap
 // guessing at 10 attempts per minute per IP.
 Route::post('/admin/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login.attempt');
 
+// Microsoft Entra ID login — only served while SSO_ENABLED=true. The callback
+// path is fixed by the Redirect URI registered on the Entra app; despite the
+// /api prefix it's a web route, because the state check needs the session.
+Route::post('/admin/login/microsoft', [MicrosoftAuthController::class, 'redirect'])->middleware('throttle:10,1')->name('login.microsoft');
+Route::get('/api/auth/microsoft/callback', [MicrosoftAuthController::class, 'callback'])->middleware('throttle:20,1')->name('login.microsoft.callback');
+
 Route::post('/admin/logout', [AuthController::class, 'logout'])->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
+// staff_member re-checks is_active and the panel role on every request, so
+// losing access in Manage Staff ends a session that is already open.
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'staff_member'])->group(function () {
     Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
     Route::get('/calendar', [AdminDashboardController::class, 'calendar'])->name('calendar');
 

@@ -119,15 +119,15 @@
         }
         .btn-primary:hover { filter: brightness(1.06); }
 
-        .sso-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--text-light); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
-        .sso-divider::before, .sso-divider::after { content: ''; height: 1px; background: var(--border); flex: 1; }
-
         .btn-sso {
-            width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
-            min-height: 46px; padding: 10px 16px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-            background: var(--off-white); color: var(--text-mid); font-family: var(--font-sans);
-            font-size: 0.86rem; font-weight: 700; cursor: not-allowed; opacity: 0.72;
+            width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+            min-height: 48px; padding: 10px 16px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+            background: var(--white); color: var(--text); font-family: var(--font-sans);
+            font-size: 0.9rem; font-weight: 700; cursor: pointer;
         }
+        .btn-sso:hover { border-color: var(--gold); background: var(--off-white); }
+        .btn-sso:focus-visible { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(125, 145, 148, 0.18); }
+        .sso-hint { margin-top: 12px; text-align: center; font-size: 0.78rem; color: var(--text-light); }
         .sso-mark { width: 16px; height: 16px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; flex-shrink: 0; }
         .sso-mark span:nth-child(1) { background: #f25022; }
         .sso-mark span:nth-child(2) { background: #7fba00; }
@@ -165,8 +165,13 @@
         <div class="login-card-head">
             <div class="lock-icon">🔒</div>
             <div>
-                <h2>Lab Staff Access</h2>
-                <p>Restricted — authorised staff only</p>
+                @if (config('sso.enabled'))
+                    <h2>Lab Staff Access</h2>
+                    <p>Restricted — authorised staff only</p>
+                @else
+                    <h2>Local Administrator Login</h2>
+                    <p>Development &amp; maintenance access</p>
+                @endif
             </div>
         </div>
 
@@ -187,33 +192,40 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('login.attempt') }}">
-            @csrf
-            <div class="field">
-                <label for="staff_id">Staff ID</label>
-                {{-- Font size lives in .field input, not inline: an inline rule would
-                     outrank the mobile 16px rule and keep iOS zooming on focus. --}}
-                <input type="text" id="staff_id" name="staff_id" value="{{ old('staff_id') }}"
-                       autocomplete="username" inputmode="numeric" required autofocus placeholder="e.g. 123456">
-            </div>
-            <div class="field">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password"
-                       autocomplete="current-password" required placeholder="Your password">
-            </div>
-            <label class="remember-row">
-                <input type="checkbox" name="remember" value="1" @checked(old('remember'))>
-                <span>Keep me signed in on this device</span>
-            </label>
-            <button type="submit" class="btn-primary">Sign In</button>
-        </form>
-
-        <div class="sso-divider">or</div>
-
-        <button type="button" class="btn-sso" disabled aria-disabled="true" title="Microsoft SSO is not enabled yet">
-            <span class="sso-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-            Login with Microsoft SSO — Coming Soon
-        </button>
+        {{-- One sign-in method at a time, picked by SSO_ENABLED (config/sso.php).
+             Each route also refuses requests while the other method is active,
+             so leaving the unused form out here is not the only guard. --}}
+        @if (config('sso.enabled'))
+            <form method="POST" action="{{ route('login.microsoft') }}">
+                @csrf
+                <button type="submit" class="btn-sso">
+                    <span class="sso-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+                    Sign in with Microsoft
+                </button>
+            </form>
+            <p class="sso-hint">Use your UniKL staff Microsoft account.</p>
+        @else
+            <form method="POST" action="{{ route('login.attempt') }}">
+                @csrf
+                <div class="field">
+                    <label for="staff_id">Staff ID</label>
+                    {{-- Font size lives in .field input, not inline: an inline rule would
+                         outrank the mobile 16px rule and keep iOS zooming on focus. --}}
+                    <input type="text" id="staff_id" name="staff_id" value="{{ old('staff_id') }}"
+                           autocomplete="username" inputmode="numeric" required autofocus placeholder="e.g. 123456">
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password"
+                           autocomplete="current-password" required placeholder="Your password">
+                </div>
+                <label class="remember-row">
+                    <input type="checkbox" name="remember" value="1" @checked(old('remember'))>
+                    <span>Keep me signed in on this device</span>
+                </label>
+                <button type="submit" class="btn-primary">Sign In</button>
+            </form>
+        @endif
 
     </div>
 
