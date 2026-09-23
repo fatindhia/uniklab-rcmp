@@ -116,6 +116,16 @@ class AddStaffTest extends TestCase
         $this->assertSame('admin', $user->fresh()->role->name);
     }
 
+    public function test_the_header_shows_the_signed_in_account(): void
+    {
+        $me = $this->staff('lab_staff', 'aisyah@unikl.edu.my', ['staff_id' => 'S12345', 'full_name' => 'Nur Aisyah', 'lab_types' => ['csl', 'pharma']]);
+
+        $this->actingAs($me)
+            ->get(route('admin.history'))
+            ->assertOk()
+            ->assertSeeInOrder(['Nur Aisyah', 'aisyah@unikl.edu.my', 'S12345', 'Lab Staff', 'CSL, Pharma']);
+    }
+
     private function roleId(string $name): int
     {
         return Role::where('name', $name)->value('id');

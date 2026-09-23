@@ -22,8 +22,16 @@
         ])->values());
         $__pendingByType = (array) ($adminPendingByType ?? []);
         $__pendingTotal = array_sum($__pendingByType);
-        $__initials = collect(preg_split('/\s+/', trim(auth()->user()->full_name ?? '')))
+        $__me = auth()->user();
+        $__initials = collect(preg_split('/\s+/', trim($__me->displayName())))
             ->filter()->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->take(2)->implode('') ?: '?';
+        // Same wording as the Manage Staff list: only lab staff are scoped by
+        // lab type, admins cover every lab.
+        $__myLabTypes = match ($__me->role?->name) {
+            'lab_staff' => $__me->labTypesLabel() ?: 'Not assigned',
+            'admin', 'super_admin' => 'All labs',
+            default => '—',
+        };
     @endphp
     <script>
         window.ADMIN_LABS_BY_TYPE = @json($__adminLabsByType);
@@ -210,16 +218,18 @@
                     <div class="dropdown" id="admProfileDropdown">
                         <button type="button" class="profile-btn" id="admProfileBtn">
                             <span class="profile-avatar">{{ $__initials }}</span>
-                            <span class="profile-btn-name">{{ auth()->user()->full_name }}</span>
+                            <span class="profile-btn-name">{{ $__me->displayName() }}</span>
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                         </button>
                         <div class="dropdown-panel">
                             <div class="profile-panel-head">
                                 <span class="profile-avatar">{{ $__initials }}</span>
                                 <div>
-                                    <strong>{{ auth()->user()->full_name }}</strong>
-                                    <span>{{ auth()->user()->email }}</span>
-                                    <span>{{ auth()->user()->role?->label ?? 'Staff' }}</span>
+                                    <strong>{{ $__me->displayName() }}</strong>
+                                    <span>{{ $__me->email }}</span>
+                                    <span>{{ $__me->hasPendingStaffId() ? 'Staff ID set at first Microsoft sign-in' : $__me->staff_id }}</span>
+                                    <span>{{ $__me->role?->label ?? 'Staff' }}</span>
+                                    <span>{{ $__myLabTypes }}</span>
                                 </div>
                             </div>
                         </div>
