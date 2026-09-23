@@ -8,7 +8,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | On (production): the admin login page offers "Sign in with Microsoft"
-    | only, and the Staff ID + password form is switched off so it can't be
+    | only, and the email + password form is switched off so it can't be
     | used as a bypass. Off (local, Docker, maintenance): the other way round.
     |
     | Either way a sign-in only succeeds for an existing, active account that
@@ -42,9 +42,10 @@ return [
 
     'graph_me_select' => env('AZURE_GRAPH_ME_SELECT', 'id,displayName,mail,userPrincipalName,jobTitle,officeLocation'),
 
-    // The Graph user property holding the UniKL staff ID, read when Manage
-    // Staff creates an account from the directory. A dotted path reaches into
-    // an object, e.g. onPremisesExtensionAttributes.extensionAttribute1.
+    // The Graph user property holding the UniKL staff ID. Manage Staff adds
+    // accounts by email alone, under a placeholder ID; the first Microsoft
+    // sign-in swaps in this value. A dotted path reaches into an object,
+    // e.g. onPremisesExtensionAttributes.extensionAttribute1.
     'staff_id_attribute' => env('AZURE_STAFF_ID_ATTRIBUTE', 'employeeId'),
 
     // Exact domain match on the part after "@". A subdomain is a different

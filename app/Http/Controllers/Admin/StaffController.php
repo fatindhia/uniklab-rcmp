@@ -7,19 +7,14 @@ use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Sso\AdminAccountResolver;
-use App\Support\Sso\MicrosoftDirectory;
-use App\Support\Sso\SsoException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 class StaffController extends Controller
 {
     /**
-     * Every new account starts with this. With SSO on nobody types it — they
-     * sign in with Microsoft — it only matters for the local password login.
+     * Pre-filled on Add Staff. It's for the email + password login used
+     * locally; with SSO on, staff sign in with Microsoft instead.
      */
     public const DEFAULT_PASSWORD = 'Rcmp@1234';
 
@@ -43,72 +38,39 @@ class StaffController extends Controller
     }
 
     /**
-     * Add Staff's "Find" button: fills the blank staff ID, name and phone
-     * boxes from the directory so the admin can check them before saving.
-     * Optional — store() does its own lookup either way.
+     * Only the email, role, lab types and password are asked for. The staff
+     * ID starts as a placeholder and the name blank; the first Microsoft
+     * sign-in fills both in (ProfileLinker), the same way it links the oid.
      */
-    public function lookup(Request $request, MicrosoftDirectory $directory)
+    public function store(Request $request)
     {
-        abort_unless(config('sso.enabled'), 404);
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
 
-        $request->validate(['email' => $this->directoryEmailRule()]);
-
-        try {
-            return response()->json($this->findNewStaff($directory, $request->input('email')));
-        } catch (ValidationException $e) {
-            return response()->json(['message' => $e->validator->errors()->first()], 422);
-        }
-    }
-
-    public function store(Request $request, MicrosoftDirectory $directory)
-    {
-        $shared = [
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:150', 'unique:users,email', function ($attribute, $value, $fail) {
+                // With SSO on, an address outside UniKL could never sign in.
+                if (config('sso.enabled') && ! AdminAccountResolver::isAllowedEmail($value)) {
+                    $fail('Use a UniKL staff email address ('.implode(', ', config('sso.allowed_email_domains')).').');
+                }
+            }],
             'role_id' => $this->assignableRoleIdRule(),
             'lab_types' => ['nullable', 'array'],
             'lab_types.*' => ['in:research,csl,pharma'],
-        ];
-
-        if (config('sso.enabled')) {
-            // Staff ID, name and phone are optional: whatever the admin types
-            // is kept, and anything left blank comes from the directory.
-            $data = $request->validate($shared + [
-                'email' => $this->directoryEmailRule(),
-                'staff_id' => ['nullable', 'string', 'max:20'],
-                'full_name' => ['nullable', 'string', 'max:150'],
-                'phone_number' => ['nullable', 'string', 'max:30'],
-            ]);
-
-            $person = $this->findNewStaff($directory, $data['email'], $data);
-
-            foreach (['staff_id' => 'staff ID', 'full_name' => 'name'] as $field => $label) {
-                if ($person[$field] === '') {
-                    throw ValidationException::withMessages([$field => "The UniKL directory has no {$label} for this person — enter it by hand."]);
-                }
-            }
-        } else {
-            // Local / Docker, where there's no directory to ask.
-            $person = $request->validate($shared + [
-                'staff_id' => ['required', 'string', 'max:20', 'unique:users,staff_id'],
-                'full_name' => ['required', 'string', 'max:150'],
-                'email' => ['required', 'email', 'max:150', 'unique:users,email'],
-                'phone_number' => ['nullable', 'string', 'max:30'],
-            ]);
-            $data = $person;
-        }
+            'password' => ['nullable', 'string', 'min:8'],
+        ]);
 
         $user = User::create([
-            'staff_id' => $person['staff_id'],
-            'oid' => $person['oid'] ?? null,
-            'full_name' => $person['full_name'],
-            'email' => $person['email'],
-            'phone_number' => $person['phone_number'] ?? '',
+            'staff_id' => User::newPendingStaffId(),
+            'full_name' => '',
+            'email' => $data['email'],
+            'phone_number' => '',
             'role_id' => $data['role_id'],
             'lab_types' => User::normalizeLabTypes($data['lab_types'] ?? null),
-            'password_hash' => Hash::make(self::DEFAULT_PASSWORD),
+            'password_hash' => Hash::make($data['password'] ?? self::DEFAULT_PASSWORD),
             'is_active' => true,
         ]);
 
-        ActivityLog::record('staff', 'created', $user->staff_id, $user->full_name, [
+        ActivityLog::record('staff', 'created', $user->staff_id, $user->displayName(), [
             'role' => ['—', Role::find($data['role_id'])?->label ?? '—'],
         ]);
 
@@ -118,8 +80,9 @@ class StaffController extends Controller
     public function update(Request $request, User $user)
     {
         $data = $request->validate([
-            'full_name' => ['required', 'string', 'max:150'],
-            'phone_number' => ['nullable', 'string', 'max:30'],
+            // Blank is allowed: a new account's name arrives with its first
+            // Microsoft sign-in.
+            'full_name' => ['nullable', 'string', 'max:150'],
             'role_id' => $this->assignableRoleIdRule($user),
             'lab_types' => ['nullable', 'array'],
             'lab_types.*' => ['in:research,csl,pharma'],
@@ -129,8 +92,7 @@ class StaffController extends Controller
         $before = $user->getOriginal();
 
         $user->update([
-            'full_name' => $data['full_name'],
-            'phone_number' => $data['phone_number'] ?? '',
+            'full_name' => trim((string) ($data['full_name'] ?? '')),
             'role_id' => $data['role_id'],
             'lab_types' => User::normalizeLabTypes($data['lab_types'] ?? null),
             'is_active' => $request->boolean('is_active'),
@@ -157,64 +119,10 @@ class StaffController extends Controller
         }
 
         if ($changes) {
-            ActivityLog::record('staff', 'updated', $user->staff_id, $user->full_name, $changes);
+            ActivityLog::record('staff', 'updated', $user->staff_id, $user->displayName(), $changes);
         }
 
         return back()->with('status', 'Staff account updated.');
-    }
-
-    private function directoryEmailRule(): array
-    {
-        return [
-            'required', 'email', 'max:150',
-            function ($attribute, $value, $fail) {
-                if (! AdminAccountResolver::isAllowedEmail($value)) {
-                    $fail('Use a UniKL staff email address ('.implode(', ', config('sso.allowed_email_domains')).').');
-                }
-            },
-        ];
-    }
-
-    /**
-     * The directory's record for this email, with any staff ID, name or phone
-     * the admin typed in place of the directory's. Refused if the person
-     * already has an account under any of their email, staff ID or Microsoft
-     * identity.
-     *
-     * @throws ValidationException
-     */
-    private function findNewStaff(MicrosoftDirectory $directory, string $email, array $typed = []): array
-    {
-        try {
-            $person = $directory->findStaff($email);
-        } catch (SsoException $e) {
-            Log::warning('Staff directory lookup failed: '.$e->getMessage(), $e->context());
-
-            throw ValidationException::withMessages(['email' => $e->userMessage()]);
-        }
-
-        foreach (['staff_id', 'full_name', 'phone_number'] as $field) {
-            $person[$field] = trim((string) ($typed[$field] ?? '')) ?: $person[$field];
-        }
-        $person['full_name'] = mb_substr($person['full_name'], 0, 150);
-        $person['phone_number'] = mb_substr($person['phone_number'], 0, 30);
-
-        if (mb_strlen($person['staff_id']) > 20) {
-            throw ValidationException::withMessages(['staff_id' => "The directory's staff ID for this person ({$person['staff_id']}) is longer than 20 characters — enter it by hand."]);
-        }
-
-        $existing = User::query()
-            ->where('oid', $person['oid'])
-            ->orWhere(DB::raw('LOWER(TRIM(email))'), $person['email'])
-            ->orWhere(DB::raw('LOWER(TRIM(email))'), strtolower(trim($email)))
-            ->when($person['staff_id'] !== '', fn ($q) => $q->orWhere('staff_id', $person['staff_id']))
-            ->first();
-
-        if ($existing) {
-            throw ValidationException::withMessages(['email' => "{$existing->full_name} already has an account (Staff ID {$existing->staff_id})."]);
-        }
-
-        return $person;
     }
 
     /**

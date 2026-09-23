@@ -3,6 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Http\Middleware\EnsureUserIsStaffMember;
+use App\Models\ActivityLog;
 use App\Models\User;
 use App\Support\Sso\AdminAccountResolver;
 use App\Support\Sso\SsoException;
@@ -66,7 +67,7 @@ class MicrosoftSsoLoginTest extends TestCase
     {
         $admin = $this->staff('admin', 'admin@unikl.edu.my');
 
-        $this->post(route('login.attempt'), ['staff_id' => $admin->staff_id, 'password' => self::PASSWORD])
+        $this->post(route('login.attempt'), ['email' => $admin->email, 'password' => self::PASSWORD])
             ->assertNotFound();
 
         $this->assertGuest();
@@ -111,6 +112,53 @@ class MicrosoftSsoLoginTest extends TestCase
             && strlen($request['code_verifier']) >= 43);
         Http::assertSent(fn (HttpRequest $request) => str_starts_with($request->url(), 'https://graph.microsoft.com/v1.0/me')
             && $request->hasHeader('Authorization', 'Bearer test-access-token'));
+    }
+
+    public function test_first_sign_in_fills_in_the_name_and_real_staff_id(): void
+    {
+        $user = $this->staff('admin', 'rudhiah@unikl.edu.my', ['staff_id' => User::newPendingStaffId(), 'full_name' => '']);
+        $pendingId = $user->staff_id;
+        ActivityLog::create(['area' => 'staff', 'action' => 'created', 'subject_id' => $pendingId, 'subject_label' => 'rudhiah@unikl.edu.my']);
+
+        $this->signInWithMicrosoft(['mail' => 'rudhiah@unikl.edu.my', 'displayName' => 'Rudhiah Binti Ali', 'employeeId' => 'S12345'])
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertNull(User::find($pendingId));
+        $user = User::find('S12345');
+        $this->assertSame('Rudhiah Binti Ali', $user->full_name);
+        $this->assertSame(self::OID, $user->oid);
+        $this->assertAuthenticatedAs($user);
+
+        // performed_by follows through its ON UPDATE CASCADE foreign key,
+        // which the test database doesn't enforce; subject_id is plain text.
+        $this->assertSame('S12345', ActivityLog::sole()->subject_id);
+
+        Http::assertSent(fn (HttpRequest $request) => str_contains(urldecode($request->url()), 'employeeId'));
+    }
+
+    public function test_later_sign_ins_leave_the_name_and_staff_id_alone(): void
+    {
+        $user = $this->staff('admin', 'rudhiah@unikl.edu.my', ['staff_id' => '121212', 'full_name' => 'Rudhiah (edited)']);
+
+        $this->signInWithMicrosoft(['mail' => 'rudhiah@unikl.edu.my', 'displayName' => 'Rudhiah Binti Ali', 'employeeId' => 'S12345']);
+
+        $user->refresh();
+        $this->assertSame('121212', $user->staff_id);
+        $this->assertSame('Rudhiah (edited)', $user->full_name);
+    }
+
+    public function test_placeholder_staff_id_stays_when_microsoft_has_no_usable_one(): void
+    {
+        $this->staff('lab_staff', 'taken@unikl.edu.my', ['staff_id' => 'S12345']);
+        $user = $this->staff('admin', 'rudhiah@unikl.edu.my', ['staff_id' => User::newPendingStaffId(), 'full_name' => '']);
+
+        $this->signInWithMicrosoft(['mail' => 'rudhiah@unikl.edu.my', 'displayName' => 'Rudhiah Binti Ali', 'employeeId' => 'S12345'])
+            ->assertRedirect(route('admin.dashboard'));
+
+        $user->refresh();
+        $this->assertTrue($user->hasPendingStaffId());
+        $this->assertSame('Rudhiah Binti Ali', $user->full_name);
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_user_principal_name_is_used_when_mail_is_empty(): void

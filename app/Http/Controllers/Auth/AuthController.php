@@ -21,7 +21,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Staff ID + password sign-in, for local, Docker and maintenance use. Off
+     * Email + password sign-in, for local, Docker and maintenance use. Off
      * while SSO_ENABLED=true, so it can't become a way around Microsoft
      * sign-in in production.
      */
@@ -29,14 +29,16 @@ class AuthController extends Controller
     {
         abort_if(config('sso.enabled'), 404);
 
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
+
         $credentials = $request->validate([
-            'staff_id' => ['required', 'string'],
+            'email' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
         // is_active is part of the lookup, not a check after the fact: a
         // deactivated account should fail exactly like a wrong password, with
-        // no hint that the ID itself is real.
+        // no hint that the address itself is on file.
         $credentials['is_active'] = true;
 
         // The role check only runs once the password has matched, so telling
@@ -50,19 +52,19 @@ class AuthController extends Controller
 
         if ($lacksPanelRole) {
             Log::warning('Local sign-in refused: account holds no admin panel role', [
-                'staff_id' => $credentials['staff_id'],
+                'staff_id' => Auth::getLastAttempted()?->staff_id,
                 'ip' => $request->ip(),
             ]);
 
             return back()
-                ->withErrors(['staff_id' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE])
-                ->onlyInput('staff_id');
+                ->withErrors(['email' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE])
+                ->onlyInput('email');
         }
 
         if (! $signedIn) {
             return back()
-                ->withErrors(['staff_id' => 'Those credentials do not match our records.'])
-                ->onlyInput('staff_id');
+                ->withErrors(['email' => 'Those credentials do not match our records.'])
+                ->onlyInput('email');
         }
 
         $request->session()->regenerate();

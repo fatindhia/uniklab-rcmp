@@ -205,7 +205,7 @@ class MicrosoftEntraClient
 
         try {
             $response = Http::withToken($accessToken)->acceptJson()->timeout(self::HTTP_TIMEOUT_SECONDS)
-                ->get($url, ['$select' => config('sso.graph_me_select')]);
+                ->get($url, ['$select' => $this->profileFields()]);
         } catch (ConnectionException $e) {
             throw new SsoException('Could not reach Microsoft Graph: '.$e->getMessage());
         }
@@ -220,8 +220,22 @@ class MicrosoftEntraClient
         return $response->json();
     }
 
+    /**
+     * sso.graph_me_select plus whichever property holds the staff ID, so the
+     * first sign-in can give a newly added account its real staff ID. A
+     * dotted path (onPremisesExtensionAttributes.extensionAttribute1) is
+     * selected by its top-level property.
+     */
+    private function profileFields(): string
+    {
+        $fields = array_map('trim', explode(',', config('sso.graph_me_select')));
+        $fields[] = strtok(config('sso.staff_id_attribute'), '.');
+
+        return implode(',', array_unique(array_filter($fields)));
+    }
+
     /** @throws SsoException */
-    public function assertConfigured(): void
+    private function assertConfigured(): void
     {
         $missing = array_filter(['client_id', 'client_secret', 'tenant_id'], fn ($key) => blank(config("sso.$key")));
 
@@ -234,7 +248,7 @@ class MicrosoftEntraClient
         }
     }
 
-    public function endpoint(string $action): string
+    private function endpoint(string $action): string
     {
         return rtrim(config('sso.authority'), '/').'/'.config('sso.tenant_id').'/oauth2/v2.0/'.$action;
     }

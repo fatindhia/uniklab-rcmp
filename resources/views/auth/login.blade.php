@@ -208,11 +208,11 @@
             <form method="POST" action="{{ route('login.attempt') }}">
                 @csrf
                 <div class="field">
-                    <label for="staff_id">Staff ID</label>
+                    <label for="email">Email</label>
                     {{-- Font size lives in .field input, not inline: an inline rule would
                          outrank the mobile 16px rule and keep iOS zooming on focus. --}}
-                    <input type="text" id="staff_id" name="staff_id" value="{{ old('staff_id') }}"
-                           autocomplete="username" inputmode="numeric" required autofocus placeholder="e.g. 123456">
+                    <input type="email" id="email" name="email" value="{{ old('email') }}"
+                           autocomplete="username" required autofocus placeholder="name@unikl.edu.my">
                 </div>
                 <div class="field">
                     <label for="password">Password</label>

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable
 {
@@ -25,6 +26,12 @@ class User extends Authenticatable
         'csl' => 'CSL',
         'pharma' => 'Pharma',
     ];
+
+    /**
+     * Manage Staff adds accounts by email alone, so a new account holds one of
+     * these until its first Microsoft sign-in swaps in the real staff ID.
+     */
+    public const PENDING_STAFF_ID_PREFIX = 'NEW-';
 
     protected $fillable = [
         'staff_id',
@@ -159,6 +166,27 @@ class User extends Authenticatable
         }
 
         return $valid->values();
+    }
+
+    public static function newPendingStaffId(): string
+    {
+        do {
+            $staffId = static::PENDING_STAFF_ID_PREFIX.strtoupper(Str::random(10));
+        } while (static::whereKey($staffId)->exists());
+
+        return $staffId;
+    }
+
+    /** Still waiting for its first Microsoft sign-in to supply the real staff ID. */
+    public function hasPendingStaffId(): bool
+    {
+        return str_starts_with($this->staff_id, static::PENDING_STAFF_ID_PREFIX);
+    }
+
+    /** full_name stays blank until Microsoft supplies it; show the email meanwhile. */
+    public function displayName(): string
+    {
+        return $this->full_name !== '' ? $this->full_name : (string) $this->email;
     }
 
     public function getAuthPassword(): string

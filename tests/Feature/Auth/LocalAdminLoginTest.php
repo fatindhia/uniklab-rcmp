@@ -58,11 +58,21 @@ class LocalAdminLoginTest extends TestCase
     {
         $user = $this->staff($role, 'someone@unikl.edu.my');
 
-        $this->post(route('login.attempt'), ['staff_id' => $user->staff_id, 'password' => self::PASSWORD])
+        $this->post(route('login.attempt'), ['email' => $user->email, 'password' => self::PASSWORD])
             ->assertRedirect(route('admin.dashboard'));
 
         $this->assertAuthenticatedAs($user);
         $this->assertNotNull($user->fresh()->last_login_at);
+    }
+
+    public function test_email_is_matched_whatever_its_case(): void
+    {
+        $user = $this->staff('admin', 'someone@unikl.edu.my');
+
+        $this->post(route('login.attempt'), ['email' => ' SomeOne@UniKL.edu.my ', 'password' => self::PASSWORD])
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertAuthenticatedAs($user);
     }
 
     /** Test 7 — SSO off + account without a panel role = denied. */
@@ -71,9 +81,9 @@ class LocalAdminLoginTest extends TestCase
         $user = $this->staff('viewer', 'someone@unikl.edu.my');
 
         $this->from(route('login'))
-            ->post(route('login.attempt'), ['staff_id' => $user->staff_id, 'password' => self::PASSWORD])
+            ->post(route('login.attempt'), ['email' => $user->email, 'password' => self::PASSWORD])
             ->assertRedirect(route('login'))
-            ->assertSessionHasErrors(['staff_id' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
+            ->assertSessionHasErrors(['email' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
 
         $this->assertGuest();
         $this->assertNull($user->fresh()->last_login_at);
@@ -84,8 +94,8 @@ class LocalAdminLoginTest extends TestCase
         $user = $this->staff('viewer', 'someone@unikl.edu.my');
 
         $this->from(route('login'))
-            ->post(route('login.attempt'), ['staff_id' => $user->staff_id, 'password' => 'wrong-password'])
-            ->assertSessionHasErrors(['staff_id' => 'Those credentials do not match our records.']);
+            ->post(route('login.attempt'), ['email' => $user->email, 'password' => 'wrong-password'])
+            ->assertSessionHasErrors(['email' => 'Those credentials do not match our records.']);
 
         $this->assertGuest();
     }
@@ -95,8 +105,8 @@ class LocalAdminLoginTest extends TestCase
         $user = $this->staff('admin', 'someone@unikl.edu.my', ['is_active' => false]);
 
         $this->from(route('login'))
-            ->post(route('login.attempt'), ['staff_id' => $user->staff_id, 'password' => self::PASSWORD])
-            ->assertSessionHasErrors(['staff_id' => 'Those credentials do not match our records.']);
+            ->post(route('login.attempt'), ['email' => $user->email, 'password' => self::PASSWORD])
+            ->assertSessionHasErrors(['email' => 'Those credentials do not match our records.']);
 
         $this->assertGuest();
     }
@@ -114,7 +124,7 @@ class LocalAdminLoginTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.history'))
             ->assertRedirect(route('login'))
-            ->assertSessionHasErrors(['staff_id' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
+            ->assertSessionHasErrors(['email' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
 
         $this->assertGuest();
     }
@@ -126,7 +136,7 @@ class LocalAdminLoginTest extends TestCase
         $this->actingAs($user)
             ->get(route('admin.history'))
             ->assertRedirect(route('login'))
-            ->assertSessionHasErrors(['staff_id' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
+            ->assertSessionHasErrors(['email' => EnsureUserIsStaffMember::NOT_AUTHORISED_MESSAGE]);
 
         $this->assertGuest();
     }

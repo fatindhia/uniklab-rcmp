@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Support\Sso\AdminAccountResolver;
 use App\Support\Sso\MicrosoftEntraClient;
+use App\Support\Sso\ProfileLinker;
 use App\Support\Sso\SsoException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +21,7 @@ class MicrosoftAuthController extends Controller
     public function __construct(
         private readonly MicrosoftEntraClient $entra,
         private readonly AdminAccountResolver $accounts,
+        private readonly ProfileLinker $linker,
     ) {}
 
     /**
@@ -57,11 +59,9 @@ class MicrosoftAuthController extends Controller
         }
 
         // The first Microsoft sign-in links the account to its Entra object
-        // ID, so it's still found if the address later changes in Entra.
-        $user->forceFill([
-            'oid' => $user->oid ?? strtolower($profile['id']),
-            'last_login_at' => now(),
-        ])->save();
+        // ID, so it's still found if the address later changes in Entra, and
+        // fills in the name and staff ID Manage Staff left for Microsoft.
+        $user = $this->linker->link($user, $profile);
 
         Auth::login($user);
         $request->session()->regenerate();

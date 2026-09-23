@@ -32,7 +32,7 @@ class EnsureUserIsStaffMember
                 abort(403);
             }
 
-            return redirect()->route('login')->withErrors(['staff_id' => self::NOT_AUTHORISED_MESSAGE]);
+            return redirect()->route('login')->withErrors(['email' => self::NOT_AUTHORISED_MESSAGE]);
         }
 
         return $next($request);
