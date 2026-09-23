@@ -42,6 +42,11 @@ return [
 
     'graph_me_select' => env('AZURE_GRAPH_ME_SELECT', 'id,displayName,mail,userPrincipalName,jobTitle,officeLocation'),
 
+    // The Graph user property holding the UniKL staff ID, read when Manage
+    // Staff creates an account from the directory. A dotted path reaches into
+    // an object, e.g. onPremisesExtensionAttributes.extensionAttribute1.
+    'staff_id_attribute' => env('AZURE_STAFF_ID_ATTRIBUTE', 'employeeId'),
+
     // Exact domain match on the part after "@". A subdomain is a different
     // domain: unikl.edu.my does not cover s.unikl.edu.my (student accounts).
     'allowed_email_domains' => array_values(array_filter(array_map(

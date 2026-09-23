@@ -3,7 +3,7 @@
 @section('content')
     <style>
         .af-field { display: grid; gap: 5px; }
-        .af-field span.lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+        .af-field .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
         .af-field input, .af-field select, .af-field textarea {
             /* Without width/min-width/box-sizing a control keeps its intrinsic
                width and pushes out of its grid cell — invisible on a wide modal,
@@ -60,6 +60,12 @@
         .stf-labtypes input:checked + .stf-check-box::after { opacity: 1; }
         .stf-labtypes input:focus-visible + .stf-check-box { outline: 2px solid var(--brand); outline-offset: 2px; }
 
+        .stf-email-row { display: flex; gap: 8px; }
+        .stf-email-row .button { min-height: 42px; flex-shrink: 0; }
+        .stf-lookup-msg { font-size: .76rem; color: var(--muted); }
+        .stf-lookup-msg.is-error { color: #b42318; }
+        .stf-lookup-msg.is-ok { color: #067647; }
+
         .stf-switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 22px; }
         .stf-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
         .stf-switch-track {
@@ -111,6 +117,10 @@
         // more than one area — while admins get every ticket and super admins
         // get none.
         $labTypeLabels = \App\Models\User::LAB_TYPE_LABELS;
+
+        // With SSO on, Add Staff takes an email and fills the rest from the
+        // UniKL directory; without it (local / Docker) everything is typed in.
+        $ssoLookup = (bool) config('sso.enabled');
         $labTypeFor = fn ($user) => match ($user->role?->name) {
             'lab_staff' => $user->labTypesLabel() ?: 'Not assigned',
             'admin' => 'All labs',
@@ -210,8 +220,22 @@
                 @csrf
                 <div id="staffModalMethod"></div>
                 <div class="af-modal-form-grid">
-                    <label class="af-field">
-                        <span class="lbl">Staff ID *</span>
+                    {{-- Email leads: with SSO on it's what the directory lookup keys on. --}}
+                    <div class="af-field" id="staff-email-field" style="grid-column:1/-1;">
+                        <label class="lbl" for="staff-email">UniKL Email *</label>
+                        <div class="stf-email-row">
+                            <input type="email" name="email" id="staff-email" required autocomplete="off"
+                                @if ($ssoLookup) placeholder="name@unikl.edu.my" onkeydown="if (event.key === 'Enter') { event.preventDefault(); lookupStaff(); }" @endif>
+                            @if ($ssoLookup)
+                                <button type="button" class="button button-secondary" id="staff-lookup-btn" onclick="lookupStaff()">Find</button>
+                            @endif
+                        </div>
+                        @if ($ssoLookup)
+                            <span class="stf-lookup-msg" id="staff-lookup-msg">Leave Staff ID, Full Name or Phone blank to take them from Microsoft. Press Find to preview.</span>
+                        @endif
+                    </div>
+                    <label class="af-field" data-directory-field>
+                        <span class="lbl" data-label="Staff ID" data-required>Staff ID *</span>
                         <input type="text" name="staff_id" id="staff-id" required>
                     </label>
                     <label class="af-field">
@@ -241,27 +265,22 @@
                         </div>
                         <span class="stf-id">No booking emails when all are off.</span>
                     </div>
-                    <label class="af-field" style="grid-column:1/-1;">
-                        <span class="lbl">Full Name *</span>
+                    <label class="af-field" style="grid-column:1/-1;" data-directory-field>
+                        <span class="lbl" data-label="Full Name" data-required>Full Name *</span>
                         <input type="text" name="full_name" id="staff-name" required>
                     </label>
-                    <label class="af-field">
-                        <span class="lbl">Email *</span>
-                        <input type="email" name="email" id="staff-email" required>
-                    </label>
-                    <label class="af-field">
-                        <span class="lbl">Phone</span>
+                    <label class="af-field" data-directory-field>
+                        <span class="lbl" data-label="Phone">Phone</span>
                         <input type="text" name="phone_number" id="staff-phone">
-                    </label>
-                    <label id="staff-password-field" class="af-field">
-                        <span class="lbl">Password *</span>
-                        <input type="password" name="password" id="staff-password">
                     </label>
                     <label id="staff-active-field" class="stf-switch" style="display:none;">
                         <input type="checkbox" name="is_active" id="staff-active" value="1">
                         <span class="stf-switch-track" aria-hidden="true"></span>
                         <span class="stf-switch-label">Active account</span>
                     </label>
+                    <p class="stf-id" id="staff-password-note" style="grid-column:1/-1; margin:0;">
+                        The account is created with the default password <strong>{{ $defaultPassword }}</strong>.
+                    </p>
                 </div>
                 <div class="af-modal-foot">
                     <button type="button" class="button button-secondary" onclick="closeStaffModal()">Cancel</button>
@@ -290,6 +309,7 @@
     <script>
         const STAFF_STORE_URL = @json(route('admin.staff.store'));
         const STAFF_UPDATE_URL = @json(route('admin.staff.update', ['user' => '__ID__']));
+        const STAFF_LOOKUP_URL = @json($ssoLookup ? route('admin.staff.lookup') : null);
 
         function openStaffModal(staff) {
             const isEdit = !!staff;
@@ -304,11 +324,22 @@
             document.getElementById('staff-name').value = staff?.full_name || '';
             document.getElementById('staff-email').value = staff?.email || '';
             document.getElementById('staff-email').required = !isEdit;
-            document.getElementById('staff-email').closest('label').style.display = isEdit ? 'none' : 'grid';
+            document.getElementById('staff-email-field').style.display = isEdit ? 'none' : 'grid';
             document.getElementById('staff-phone').value = staff?.phone_number || '';
+            document.getElementById('staff-password-note').style.display = isEdit ? 'none' : '';
 
-            document.getElementById('staff-password').required = !isEdit;
-            document.getElementById('staff-password-field').style.display = isEdit ? 'none' : 'grid';
+            // Adding with SSO on: staff ID, name and phone are optional —
+            // anything left blank is taken from Microsoft on save.
+            const fromDirectory = !isEdit && !!STAFF_LOOKUP_URL;
+            document.querySelectorAll('[data-directory-field]').forEach(function (el) {
+                const label = el.querySelector('.lbl');
+                const input = el.querySelector('input');
+                const required = label.hasAttribute('data-required');
+                label.textContent = label.dataset.label + (fromDirectory ? ' (optional)' : (required ? ' *' : ''));
+                input.placeholder = fromDirectory ? 'From Microsoft if left blank' : '';
+                input.required = required && !fromDirectory;
+            });
+            if (fromDirectory) setStaffLookupMsg('Leave Staff ID, Full Name or Phone blank to take them from Microsoft. Press Find to preview.');
 
             document.getElementById('staff-active-field').style.display = isEdit ? 'flex' : 'none';
             document.getElementById('staff-active').checked = staff?.is_active ?? true;
@@ -331,6 +362,48 @@
             const isLabStaff = role.selectedOptions[0]?.dataset.roleName === 'lab_staff';
             document.getElementById('staff-lab-type-field').style.display = isLabStaff ? 'grid' : 'none';
             if (!isLabStaff) document.querySelectorAll('.staff-lab-type-input').forEach(cb => { cb.checked = false; });
+        }
+
+        function setStaffLookupMsg(text, state) {
+            const msg = document.getElementById('staff-lookup-msg');
+            msg.textContent = text;
+            msg.className = 'stf-lookup-msg' + (state ? ' is-' + state : '');
+        }
+
+        async function lookupStaff() {
+            const email = document.getElementById('staff-email').value.trim();
+            const button = document.getElementById('staff-lookup-btn');
+            if (!email) return setStaffLookupMsg('Enter an email address first.', 'error');
+
+            button.disabled = true;
+            setStaffLookupMsg('Searching the UniKL directory…');
+
+            try {
+                const response = await fetch(STAFF_LOOKUP_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ _token: document.querySelector('#staffModalForm [name=_token]').value, email: email }),
+                });
+                const body = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    return setStaffLookupMsg(body.errors?.email?.[0] || body.message || 'Lookup failed. Please try again.', 'error');
+                }
+
+                // Only blank boxes are filled: whatever the admin typed wins,
+                // exactly as it does on save.
+                const fields = { 'staff-id': body.staff_id, 'staff-name': body.full_name, 'staff-phone': body.phone_number };
+                Object.entries(fields).forEach(function ([id, value]) {
+                    const input = document.getElementById(id);
+                    if (!input.value.trim()) input.value = value || '';
+                });
+                const missing = document.getElementById('staff-id').value.trim() ? '' : ' Microsoft has no staff ID for them — enter it below.';
+                setStaffLookupMsg('Found ' + body.full_name + '.' + missing, missing ? 'error' : 'ok');
+            } catch (e) {
+                setStaffLookupMsg('Could not reach the server. Please try again.', 'error');
+            } finally {
+                button.disabled = false;
+            }
         }
 
         function closeStaffModal(e) {

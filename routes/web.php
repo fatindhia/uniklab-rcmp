@@ -71,6 +71,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'staff_member'])->gr
     Route::middleware('admin')->group(function () {
         Route::get('/staff', [AdminStaffController::class, 'index'])->name('staff.index');
         Route::post('/staff', [AdminStaffController::class, 'store'])->name('staff.store');
+        Route::post('/staff/lookup', [AdminStaffController::class, 'lookup'])->middleware('throttle:30,1')->name('staff.lookup');
         Route::patch('/staff/{user}', [AdminStaffController::class, 'update'])->name('staff.update');
 
         Route::get('/report', [AdminReportController::class, 'index'])->name('report');

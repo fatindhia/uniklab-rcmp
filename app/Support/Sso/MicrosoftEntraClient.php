@@ -221,7 +221,7 @@ class MicrosoftEntraClient
     }
 
     /** @throws SsoException */
-    private function assertConfigured(): void
+    public function assertConfigured(): void
     {
         $missing = array_filter(['client_id', 'client_secret', 'tenant_id'], fn ($key) => blank(config("sso.$key")));
 
@@ -234,7 +234,7 @@ class MicrosoftEntraClient
         }
     }
 
-    private function endpoint(string $action): string
+    public function endpoint(string $action): string
     {
         return rtrim(config('sso.authority'), '/').'/'.config('sso.tenant_id').'/oauth2/v2.0/'.$action;
     }
