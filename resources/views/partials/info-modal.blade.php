@@ -31,8 +31,8 @@
 
     .info-dialog {
         width: 100%;
-        max-width: 720px;
-        max-height: min(86vh, 780px);
+        max-width: 880px;
+        max-height: min(88vh, 820px);
         display: flex;
         flex-direction: column;
         background: var(--panel-strong, #fff);
@@ -188,46 +188,32 @@
         flex-shrink: 0;
     }
 
-    .info-steps {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .info-step {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-        padding: 14px 15px;
+    .info-guide {
+        display: block;
         border: 1px solid var(--line);
         border-radius: 14px;
+        overflow: hidden;
         background: #fff;
+        cursor: zoom-in;
+        transition: border-color .15s ease, box-shadow .15s ease;
     }
 
-    .info-step-num {
-        flex-shrink: 0;
-        width: 28px;
-        height: 28px;
-        border-radius: 9px;
-        display: grid;
-        place-items: center;
-        background: rgba(125, 145, 148, .14);
-        color: var(--brand-2);
-        font-family: 'Sora', sans-serif;
-        font-weight: 800;
-        font-size: .82rem;
+    .info-guide:hover {
+        border-color: var(--brand);
+        box-shadow: 0 10px 24px -14px rgba(34, 29, 30, .35);
     }
 
-    .info-step strong {
+    .info-guide img {
         display: block;
-        font-size: .92rem;
-        margin-bottom: 3px;
+        width: 100%;
+        height: auto;
     }
 
-    .info-step span {
-        font-size: .8rem;
+    .info-guide-hint {
+        margin: 8px 0 0;
+        font-size: .76rem;
         color: var(--muted);
-        line-height: 1.5;
+        text-align: center;
     }
 
     .info-foot {
@@ -255,10 +241,6 @@
             max-width: none;
             max-height: 92vh;
             border-radius: 20px 20px 0 0;
-        }
-
-        .info-steps {
-            grid-template-columns: 1fr;
         }
 
         .info-head,
@@ -303,36 +285,11 @@
 
             <div class="info-section">
                 <h3><span class="ic">🧭</span> How to Book</h3>
-                <div class="info-steps">
-                    <div class="info-step">
-                        <span class="info-step-num">1</span>
-                        <div>
-                            <strong>Select lab type</strong>
-                            <span>Research &amp; Development, CSL, or Pharma</span>
-                        </div>
-                    </div>
-                    <div class="info-step">
-                        <span class="info-step-num">2</span>
-                        <div>
-                            <strong>Choose room / equipment</strong>
-                            <span>Availability is checked in real time</span>
-                        </div>
-                    </div>
-                    <div class="info-step">
-                        <span class="info-step-num">3</span>
-                        <div>
-                            <strong>Fill in your details</strong>
-                            <span>Date, time, purpose and applicant info</span>
-                        </div>
-                    </div>
-                    <div class="info-step">
-                        <span class="info-step-num">4</span>
-                        <div>
-                            <strong>Submit &amp; get confirmation</strong>
-                            <span>Track it any time under Check Booking</span>
-                        </div>
-                    </div>
-                </div>
+                <a class="info-guide" href="{{ asset('images/how-to-book.jpg') }}" target="_blank" rel="noopener">
+                    <img src="{{ asset('images/how-to-book.jpg') }}" width="2000" height="1116"
+                        alt="UniKLAB RCMP guide to lab and equipment bookings. R&amp;D labs: postgraduates and lecturers only, open 08:00–17:00 daily, restricted by role and building (Al-Zahrawi or Avicenna), no minimum lead time. Clinical Skills (CSL): all students and staff, open 08:00–17:00 on weekdays, book at least 1 working day ahead. Pharmaceutical labs: staff only, open 17:00–21:00 on weekdays and 08:00–17:00 on weekends, 24-hour cancellation notice required. Booking steps: 1. Check the calendar for blocked or pending slots and choose a lab and equipment. 2. Submit your details using your @unikl.edu.my or @s.unikl.edu.my email to receive a BK-reference number. 3. Wait for approval — a pending booking is only a request, so do not use the lab until it is approved.">
+                </a>
+                <p class="info-guide-hint">Tap the image to open it full size.</p>
             </div>
         </div>
 
